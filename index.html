@@ -1,0 +1,876 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>우리나라 지리와 함께 탐구하는 우리말 문법 현상</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
+<style>
+:root{
+  --bg:#E6E9ED; --panel:#F4F6F8; --map:#BFC5CC; --map-side:#8E98A3; --map-line:#E9EDF1;
+  --dim:#D2D7DC; --dim-side:#B3BAC2;
+  --sky:#5BC0EB; --sky-d:#2A8FC0; --sky-l:#E3F4FC;
+  --green:#4CAF7D; --green-d:#2F8A5B; --green-l:#E5F4EC;
+  --white:#FFFFFF; --ink:#262C33; --ink2:#56606B; --line:#D3D9DF;
+  --font:"Pretendard","Noto Sans KR","Apple SD Gothic Neo","Malgun Gothic",system-ui,sans-serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{background:var(--bg);color:var(--ink);font-family:var(--font);font-size:16px;line-height:1.6;
+  display:flex;flex-direction:column;min-height:100vh}
+button{font:inherit;color:inherit}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+/* ---------- header ---------- */
+header.top{display:flex;align-items:center;gap:16px;padding:14px 24px;background:var(--white);
+  border-bottom:4px solid var(--sky)}
+.logo{width:44px;height:44px;flex:none;border-radius:12px;background:var(--green);display:grid;place-items:center}
+.logo svg{width:28px;height:28px;color:#fff}
+header h1{margin:0;font-size:clamp(19px,2.2vw,26px);font-weight:800;letter-spacing:-.02em;line-height:1.3}
+header p{margin:2px 0 0;color:var(--ink2);font-size:15px}
+
+/* ---------- layout ---------- */
+main{flex:1;display:grid;grid-template-columns:minmax(0,1fr) 420px;min-height:0}
+.mapcol{display:flex;flex-direction:column;min-width:0;min-height:0}
+#stage{position:relative;flex:1;min-height:520px;overflow:hidden;touch-action:manipulation}
+#map,#overlay{position:absolute;inset:0;width:100%;height:100%;display:block}
+#overlay{pointer-events:none}
+#cards{position:absolute;inset:0;pointer-events:none}
+#cardList{display:none}
+aside.panel{background:var(--panel);border-left:1px solid var(--line);display:flex;flex-direction:column;min-height:0}
+.panel-scroll{overflow:auto;flex:1;padding:22px 22px 28px}
+
+@media (max-width:980px){
+  main{grid-template-columns:1fr;grid-template-rows:auto auto}
+  #stage{flex:none;height:64vh;min-height:420px}
+  aside.panel{border-left:0;border-top:1px solid var(--line)}
+  .panel-scroll{overflow:visible}
+  main{flex:none}
+  .mapcol{min-height:auto}
+}
+
+/* ---------- map ---------- */
+.region{cursor:pointer;outline:none}
+.region .top{transition:transform .3s ease}
+.region .top path{fill:var(--map);stroke:var(--map-line);stroke-width:.6;stroke-linejoin:round;
+  vector-effect:non-scaling-stroke;transition:fill .3s ease}
+.region .base path{fill:var(--map-side);stroke:none}
+.region .hit{fill:transparent;stroke:none}
+.region.lift .top{filter:url(#lift-shadow)}
+.region.lift .top path{fill:var(--sky)}
+.region.lift .base path{fill:var(--sky-d)}
+.region:focus-visible .top path{stroke:var(--green-d);stroke-width:2}
+#map.zoomed .region .top path{fill:var(--dim)}
+#map.zoomed .region .base path{fill:var(--dim-side)}
+#map.zoomed .region.active .top path{fill:var(--sky)}
+#map.zoomed .region.active .base path{fill:var(--sky-d)}
+#map.zoomed .region:not(.active):hover .top path{fill:#C6E7F6}
+.dokdo{fill:var(--map);stroke:var(--map-side);stroke-width:.6;vector-effect:non-scaling-stroke}
+.region.lift .dokdo,#map.zoomed .region.active .dokdo{fill:var(--sky);stroke:var(--sky-d)}
+#labels text{font-family:var(--font);font-weight:800;fill:var(--ink);paint-order:stroke;stroke:rgba(255,255,255,.9);
+  stroke-width:4px;stroke-linejoin:round;text-anchor:middle;pointer-events:none;transition:opacity .3s}
+#labels text.small{font-weight:600;fill:var(--ink2)}
+#map.zoomed #labels .rlabel{opacity:0}
+
+/* ---------- overlay: markers & leader lines ---------- */
+.leader{stroke:var(--sky-d);stroke-width:2;fill:none;opacity:.9}
+.leader-dot{fill:var(--sky-d)}
+.marker{pointer-events:all;cursor:pointer}
+.marker circle.m{fill:var(--white);stroke:var(--sky-d);stroke-width:3;transition:r .2s}
+.marker text{font-family:var(--font);font-size:12px;font-weight:800;fill:var(--sky-d);text-anchor:middle;dominant-baseline:central}
+.marker .mname{font-size:14px;fill:var(--ink);paint-order:stroke;stroke:#fff;stroke-width:4px;text-anchor:start}
+.marker:hover circle.m,.marker.hl circle.m{fill:var(--green);stroke:var(--green-d)}
+.marker:hover text.n,.marker.hl text.n{fill:#fff}
+.marker .pulse{fill:none;stroke:var(--green);stroke-width:3;opacity:0}
+.marker.hl .pulse{animation:pulse 1.4s ease-out 3}
+@keyframes pulse{0%{r:12;opacity:.9}100%{r:34;opacity:0}}
+
+/* ---------- top bar on stage ---------- */
+.stagebar{position:absolute;left:16px;top:14px;right:16px;display:flex;gap:10px;align-items:center;pointer-events:none;z-index:5}
+.btn{pointer-events:auto;display:inline-flex;align-items:center;gap:8px;border:0;border-radius:999px;padding:10px 18px;
+  background:var(--green);color:#fff;font-weight:700;font-size:16px;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.12)}
+.btn:hover{background:var(--green-d)}
+.btn[disabled]{background:#AEB6BE;cursor:default;box-shadow:none}
+.btn svg{width:18px;height:18px}
+.crumb{pointer-events:none;background:var(--white);border-radius:999px;padding:8px 16px;font-weight:700;color:var(--sky-d);
+  box-shadow:0 2px 8px rgba(0,0,0,.08);display:none}
+#stage.is-zoomed .crumb{display:inline-block}
+.hint{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);background:rgba(255,255,255,.92);border-radius:999px;
+  padding:8px 18px;font-size:15px;color:var(--ink2);box-shadow:0 2px 8px rgba(0,0,0,.08);white-space:nowrap;transition:opacity .3s}
+#stage.is-zoomed .hint{opacity:0;pointer-events:none}
+
+/* ---------- tooltip ---------- */
+.tip{position:absolute;z-index:6;pointer-events:none;background:var(--ink);color:#fff;border-radius:12px;padding:10px 14px;
+  font-size:15px;line-height:1.45;max-width:260px;opacity:0;transform:translateY(4px);transition:opacity .15s,transform .15s}
+.tip.on{opacity:1;transform:none}
+.tip b{display:block;font-size:17px;color:var(--sky)}
+.tip small{display:block;margin-top:4px;color:#C9D1D9;font-size:13px}
+
+/* ---------- info cards ---------- */
+.card{position:absolute;pointer-events:auto;width:var(--cw,280px);background:var(--white);border-radius:14px;
+  border:2px solid transparent;box-shadow:0 4px 14px rgba(30,40,50,.12);padding:12px 14px 10px;cursor:pointer;
+  opacity:0;transform:translateY(6px);transition:opacity .35s ease,transform .35s ease,border-color .2s,top .25s;outline:none}
+.card.show{opacity:1;transform:none}
+.card:hover,.card:focus-visible{border-color:var(--sky)}
+.card.hl{border-color:var(--green)}
+.card h3{margin:0;font-size:18px;font-weight:800;display:flex;align-items:center;gap:8px;line-height:1.3}
+.card h3 .num{flex:none;width:24px;height:24px;border-radius:50%;background:var(--sky);color:#fff;font-size:13px;display:grid;place-items:center}
+.card h3 .more{margin-left:auto;font-size:13px;font-weight:700;color:var(--sky-d)}
+.card ul{list-style:none;margin:8px 0 0;padding:0}
+.card li{display:grid;grid-template-columns:20px 34px 1fr;gap:4px;align-items:start;font-size:15px;line-height:1.45;padding:3px 0;
+  border-top:1px dashed #E3E7EB}
+.card li:first-child{border-top:0}
+.card li svg{width:18px;height:18px;margin-top:2px}
+.card li b{font-size:13px;color:var(--ink2);font-weight:700;padding-top:1px}
+.card.compact li.extra{display:none}
+.ic-sight{color:var(--sky-d)} .ic-food{color:var(--green-d)} .ic-person{color:#6B7F95} .ic-event{color:#A77B2E}
+
+#cardList.on{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px;padding:14px 16px 6px}
+#cardList .card{position:static;width:auto}
+
+/* ---------- panel ---------- */
+.panel h2{margin:0 0 4px;font-size:21px;font-weight:800;letter-spacing:-.01em}
+.panel .lead{margin:0 0 16px;color:var(--ink2);font-size:15.5px}
+.steps{list-style:none;margin:0 0 18px;padding:0;counter-reset:s}
+.steps li{position:relative;padding:10px 12px 10px 48px;background:var(--white);border-radius:12px;margin-bottom:8px;counter-increment:s}
+.steps li::before{content:counter(s);position:absolute;left:12px;top:10px;width:26px;height:26px;border-radius:50%;
+  background:var(--sky);color:#fff;font-weight:800;font-size:14px;display:grid;place-items:center}
+.notice{background:var(--green-l);border-left:5px solid var(--green);border-radius:10px;padding:12px 14px;font-size:15px;margin:0 0 18px}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 18px}
+.chip-btn{border:2px solid var(--sky);background:var(--white);color:var(--sky-d);border-radius:999px;padding:6px 14px;font-weight:700;cursor:pointer;font-size:15px}
+.chip-btn:hover{background:var(--sky);color:#fff}
+.src{font-size:13px;color:var(--ink2);line-height:1.5;margin-top:10px}
+
+.tabs{display:flex;gap:6px;margin:14px 0 14px;background:#E2E6EA;border-radius:12px;padding:4px}
+.tab{flex:1;white-space:nowrap;border:0;border-radius:9px;padding:9px 4px;background:transparent;font-weight:700;font-size:15px;color:var(--ink2);cursor:pointer}
+.tab[aria-selected="true"]{background:var(--green);color:#fff;box-shadow:0 1px 4px rgba(0,0,0,.12)}
+.tab .cnt{display:inline-block;min-width:20px;margin-left:4px;padding:0 5px;border-radius:999px;background:rgba(0,0,0,.08);font-size:13px}
+.tab[aria-selected="true"] .cnt{background:rgba(255,255,255,.25)}
+.q{background:var(--white);border-radius:14px;padding:14px 14px 12px;margin-bottom:12px;border:2px solid transparent;transition:border-color .2s}
+.q.on{border-color:var(--green)}
+.q .meta{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px}
+.tag{font-size:13px;font-weight:700;border-radius:999px;padding:2px 10px}
+.tag.city{background:var(--sky-l);color:var(--sky-d)}
+.tag.kind{background:var(--green-l);color:var(--green-d)}
+.q .qtext{display:block;width:100%;text-align:left;border:0;background:none;padding:0;cursor:pointer;font-size:16.5px;line-height:1.6;font-weight:600}
+.q .qtext:hover{color:var(--sky-d)}
+.q .qtext::before{content:"Q. ";color:var(--green);font-weight:800}
+.q textarea{display:block;width:100%;margin-top:10px;min-height:64px;resize:vertical;border:1.5px solid var(--line);border-radius:10px;
+  padding:9px 11px;font:inherit;font-size:15.5px;background:#FAFBFC;color:var(--ink)}
+.q textarea:focus{outline:none;border-color:var(--sky);background:#fff}
+.empty{background:var(--white);border-radius:14px;padding:18px;color:var(--ink2);text-align:center}
+
+/* ---------- detail dialog ---------- */
+dialog{border:0;border-radius:18px;padding:0;width:min(640px,92vw);max-height:88vh;box-shadow:0 18px 50px rgba(0,0,0,.25);color:var(--ink)}
+dialog::backdrop{background:rgba(38,44,51,.45)}
+.dlg-head{position:sticky;top:0;background:var(--white);display:flex;align-items:center;gap:12px;padding:18px 22px 12px;border-bottom:3px solid var(--sky);z-index:1}
+.dlg-head h2{margin:0;font-size:24px;font-weight:800}
+.dlg-head .rg{color:var(--sky-d);font-weight:700;font-size:15px}
+.dlg-head button{margin-left:auto;border:0;background:#E9EDF0;border-radius:50%;width:40px;height:40px;cursor:pointer;font-size:22px;line-height:1}
+.dlg-body{padding:16px 22px 22px}
+.visual{display:flex;align-items:center;justify-content:center;gap:18px;background:linear-gradient(135deg,var(--sky-l),var(--green-l));
+  border-radius:14px;height:150px;margin-bottom:14px;overflow:hidden}
+.visual svg{width:54px;height:54px}
+figure.photo{margin:0 0 14px}
+figure.photo img{width:100%;max-height:300px;object-fit:cover;border-radius:14px;display:block}
+figure.photo figcaption{font-size:12.5px;color:var(--ink2);margin-top:4px}
+.sec{margin:0 0 14px}
+.sec h3{display:flex;align-items:center;gap:8px;margin:0 0 6px;font-size:17px}
+.sec h3 svg{width:22px;height:22px}
+.sec ul{margin:0;padding-left:22px}
+.sec li{margin:2px 0}
+.dlg-q{background:var(--panel);border-radius:12px;padding:12px 14px}
+.dlg-q h3{margin:0 0 6px;font-size:16px;color:var(--green-d)}
+.dlg-q ol{margin:0;padding-left:20px}
+.dlg-q li{margin:4px 0;font-size:15.5px}
+
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+
+<!-- 아이콘 모음 (직접 그린 SVG) -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-sight" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9.5c3.5 0 6-2 10-5.5 4 3.5 6.5 5.5 10 5.5"/><path d="M5 9.5v10h14v-10"/><path d="M10 19.5v-5h4v5"/><path d="M2 19.5h20"/></g></symbol>
+  <symbol id="i-food" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h18a9 7.5 0 0 1-18 0z"/><path d="M8 8.5c0-1.2 1.2-1.6 1.2-3M12 8.5c0-1.2 1.2-1.6 1.2-3M16 8.5c0-1.2 1.2-1.6 1.2-3"/></g></symbol>
+  <symbol id="i-person" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.6"/><path d="M4.5 20.5c1-4.2 4-6.3 7.5-6.3s6.5 2.1 7.5 6.3"/></g></symbol>
+  <symbol id="i-event" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4M8 14h3M8 17h6"/></g></symbol>
+  <symbol id="i-book" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5.5C6.5 4 9.5 4 12 6c2.5-2 5.5-2 8-.5V19c-2.5-1.5-5.5-1.5-8 .5-2.5-2-5.5-2-8-.5z"/><path d="M12 6v13.5"/></g></symbol>
+  <symbol id="i-back" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+</svg>
+
+<header class="top">
+  <div class="logo"><svg><use href="#i-book"/></svg></div>
+  <div>
+    <h1>우리나라 지리와 함께 탐구하는 우리말 문법 현상</h1>
+    <p>지역의 명소·음식·인물·역사 속 낱말로 음운 변동, 단어의 짜임, 품사를 탐구해 봅시다.</p>
+  </div>
+</header>
+
+<main>
+  <section class="mapcol">
+    <div id="stage">
+      <svg id="map" role="group" aria-label="대한민국 지도. 지역권을 선택하세요."></svg>
+      <svg id="overlay" aria-hidden="false"></svg>
+      <div id="cards"></div>
+      <div class="stagebar">
+        <button class="btn" id="back" disabled><svg><use href="#i-back"/></svg>전체 지도로 돌아가기</button>
+        <span class="crumb" id="crumb"></span>
+      </div>
+      <div class="hint" id="hint">지역권 위에 마우스를 올리고, 눌러서 확대해 보세요</div>
+      <div class="tip" id="tip" role="status" aria-live="polite"></div>
+    </div>
+    <div id="cardList"></div>
+  </section>
+  <aside class="panel" aria-label="문법 탐구 질문">
+    <div class="panel-scroll" id="panel"></div>
+  </aside>
+</main>
+
+<dialog id="dlg" aria-labelledby="dlgTitle"></dialog>
+
+<script>
+/* ==========================================================================
+   지도 경계 데이터
+   출처: 통계청 2013년 시·도 경계(southkorea/southkorea-maps 공개 저장소의
+   skorea_provinces_geo_simple.json)를 단순화하여 SVG 좌표로 변환해 넣었습니다.
+   인터넷 연결 없이도 지도가 보이도록 파일 안에 포함했습니다.
+   독도는 원본 데이터에 없어 실제 위치(동경 131.87°, 북위 37.24°)에 직접 표시했습니다.
+   2026년 7월 출범한 전남광주통합특별시는 옛 광주광역시와 전라남도 경계를 합친 범위이며,
+   두 곳 모두 호남권으로 묶어 표시합니다.
+   ========================================================================== */
+const GEO = {"proj":{"lon0":124.4,"lat0":38.9,"kx":80.5928,"ky":100.0},"extent":[17.2,28.9,604.8,570.9],"regions":{"honam":{"paths":[{"code":"36","name":"전라남도","d":"M204.1,491.6L204.5,493.4L203,493.5L202.4,492.1L204.1,491.6ZM233.4,484L234,489.1L232.4,486.9L232.4,485.3L233.4,484ZM56.1,480.6L57.5,480.8L58.3,482.6L60.3,485.1L59.4,485.7L57.8,485.2L57.6,484L56.1,483.4L56.1,480.6ZM173.4,472.4L174.5,473.3L176.2,473.3L175.6,475.9L173.3,477.7L171.4,478.2L169.8,476.6L170.7,473.3L172.6,472.1L173.4,472.4ZM182.4,470.8L184.1,471.8L183,474L184,476.4L182.5,479.2L180.2,477.5L179.7,475.8L181.3,473.5L180.2,472.4L181.5,470.3L182.4,470.8ZM190.6,469.1L191.2,471.3L189.5,471.5L190.6,469.1ZM201,468.7L203.7,472.9L202.9,474.9L200.3,475.2L197.4,472.9L199.4,469.3L201,468.7ZM174.9,466.9L177.2,467.6L178.7,468.7L179.5,470L178.3,470.7L178.8,472.3L176.4,473.1L174.3,472.4L173.3,471.4L174.7,468.4L174.9,466.9ZM230.4,465.2L230.9,467.6L230.4,469.2L228,468.6L228.5,466.7L230.4,465.2ZM178.9,465.3L179.6,466.4L176.9,466.9L177.8,465.4L178.9,465.3ZM132.4,458.4L133.6,459.9L135.6,459.5L136.7,462.6L135.1,462.1L133.5,462.9L133,462L131.4,462L130.8,460L132.4,458.4ZM208.6,456.3L210.9,457.1L210,458.9L207.4,460.2L206.2,459L206.3,457.4L208.6,456.3ZM131.5,456.3L133.4,457.1L132.2,458.1L131.5,456.3ZM196.8,455L197.4,455.8L199.2,455.3L200,456.6L201.4,457.1L200.3,459.3L199,458.8L197.2,460.5L196.1,458L194.3,457.7L193.5,458.5L192,457.6L192.6,455.6L193.8,457L195.1,455.5L196.8,455ZM212.5,452.7L214.1,454.2L217,454.5L217.5,456.8L216.4,456.7L213.7,457.4L210.2,454.5L210.6,452.7L212.5,452.7ZM184.3,450.1L185.6,450.5L188.1,452.7L187.9,454.1L189.4,458.2L191.2,459L190.4,461.1L188.1,461.6L186.9,460.6L185.1,461.1L183.7,458.9L181.4,457L180.6,452.1L181.3,451L184.3,450.1ZM205.2,449.1L205.7,450.1L204.4,453.3L203.1,454.7L198.7,453L199.4,450.8L200.5,449.9L202,450.1L204.1,451.3L205.2,449.1ZM229.5,448.9L230.8,450L231.6,452.3L229.9,451.7L230.1,450L229.5,448.9ZM196.4,446.1L197.3,447.4L198.9,451.3L196.5,452L192.9,452.3L191.4,454.9L190.8,454.3L191.6,452.2L190,451.7L190.7,449.7L192.7,447L193.7,447.1L196.4,446.1ZM213.6,444.6L215,445.2L215.8,447.4L215.1,449.9L212.6,447.9L212.3,445.4L213.6,444.6ZM274.6,444.2L275.1,445.7L274.8,448.7L273,448.5L274,445.1L274.6,444.2ZM247.1,443.1L250.2,444.1L250.5,443.5L253,445.5L252.8,447.4L249.4,449.1L249.3,447L247.2,446.3L246.3,444.8L247.1,443.1ZM227.7,441L228.6,442.8L226.9,447.1L224.9,447.3L223.2,446.8L221.4,447.4L219.8,447.2L217.6,443.7L219.8,441.4L220.7,443L222.4,442.4L224.9,440.9L225.8,441.5L227.7,441ZM133.8,440.6L134.9,442.2L132.4,444.6L132.2,442.2L133.8,440.6ZM220.7,438.5L220.2,439.7L217.6,439.4L218.9,438.1L220.7,438.5ZM246.7,435.7L248.3,436.7L246.9,439.3L249.3,439.5L250.2,440.8L248.5,442L246.2,442.4L245.5,440.6L246.7,440L245.7,438.6L244.7,438.4L246.7,435.7ZM269.5,435L270.7,435.1L271.2,436.8L272.6,438.4L273.9,441L271.9,441.6L271.6,440.7L268.2,438.7L267.2,436.4L269.5,435ZM262.8,431.8L264.5,433.4L262.9,435L261.3,432.8L262.8,431.8ZM149.3,431.4L153.6,433.2L153.9,435.1L156.3,435.7L159.9,439.8L159.1,443.7L158,444.7L158.6,446L156.3,448.7L154.5,449.8L152.7,449.4L152.1,450.9L150.5,450.6L150.3,452.4L148.7,452.5L145.3,454.5L143.1,455L140,454.3L139.9,452.9L138.3,452.2L137.9,450.8L136.3,448.5L137.3,446.2L140.8,442.7L143,441.8L143.5,440.1L145.1,439.5L147.3,436.8L149.7,436.6L150.1,435.5L148.5,433.4L149.3,431.4ZM253.7,428.4L255.2,429L253.9,430.7L252.5,430L253.7,428.4ZM117.5,427.3L117.9,429.9L116.4,430.6L115.1,430.3L114.7,428.8L117.5,427.3ZM134.6,426.8L135.8,428.9L137.4,429.7L138.1,431.4L136.9,432.9L137.4,434.8L136,434.9L135.6,436.2L133,437.4L132.8,433.8L134.3,434.2L135.6,432.5L134.2,429.4L133,429.5L133.1,427.4L134.6,426.8ZM133,424.4L133.2,426.2L132.1,428.8L133.7,430L134.4,431.9L133.5,433.6L130.6,433.9L130,429.8L129.9,427.2L131.4,426.7L131.4,425.6L133,424.4ZM141,422.9L144,424.1L144.5,427.1L142.2,428.7L139.4,428.3L137.8,425.7L138.6,423.9L141,422.9ZM135.8,421.9L136.1,423.4L135.5,426L134.2,424.8L134.3,421.8L135.8,421.9ZM80.4,420.6L78.4,423.7L77.5,422.8L80.4,420.6ZM144.9,419.7L145,422L143.7,423L142.1,422.3L142,421L144.9,419.7ZM84.1,420.3L86,421L84.6,422.3L84.4,424L83,424.4L83.2,425.9L81.9,426.5L81.9,428.1L80.2,427.5L79.5,426L80.6,422.6L81.8,420.5L84.1,420.3ZM65.6,419.2L65.7,420.8L64.9,422.3L62.7,423.1L64.7,419.8L65.6,419.2ZM270,416.9L273.1,418.6L273.5,420.1L272.3,422.2L273.8,424.2L274.2,427.3L273.6,429.2L274.7,431.3L273,431.8L270.1,431.1L267,428L268.1,426.6L268,424.7L270,423.3L270.8,421.4L270.8,419.1L270,416.9ZM126.6,417.3L127.2,418.2L130.3,419.3L129.8,421.9L128.1,422.5L127.6,423.9L126.4,424.7L122.3,422.6L122.3,419.3L124.4,418.9L126,416.6L126.6,417.3ZM135.7,412.4L136.9,413.2L139.1,412.7L140.3,414.5L142.2,414.5L144.7,417.1L144.9,418.4L143.1,420.3L140.8,421.7L138.8,422L137.9,420.7L135.1,419.5L134.6,418.6L135,415.6L135.6,415L134.6,413.1L135.7,412.4ZM155.4,411.6L154.9,414.4L153.8,413.8L153.9,412.3L155.4,411.6ZM128.9,409.8L129,414.3L127.3,415.1L124.4,415L125.2,416.9L124.5,418.2L122.6,418.9L120.6,417.7L120.1,413.8L121.7,412.7L124,412.7L126.4,411.2L127,410L128.9,409.8ZM155.6,408.7L156.3,410.4L154.4,410.9L154.6,409L155.6,408.7ZM142.8,410L143.2,414.1L140.1,414.1L139.1,412.4L137.1,412.5L137.2,411.1L139.8,410.3L141.7,408L142.8,410ZM260.8,405.4L259.2,404.5L260.8,403.2L261.9,404.6L260.8,405.4ZM138.4,402L140.2,402.8L141.3,405.8L138.3,407.7L138.8,410L137.2,410.6L136.6,409.2L133.8,405.4L135.7,404.4L137.4,405.2L138.4,402ZM267.5,400.4L269.8,401.2L269.9,403L267.6,403.5L265.5,401.8L267.5,400.4ZM153,398.1L154.2,399.4L156.2,399.4L156.8,400.9L155.3,401.3L155.3,404.2L157.9,403.9L159.1,405.6L157.9,408.8L155.8,408.4L156.5,406.5L156.1,405.5L151.4,404.7L149.7,406.3L147.5,405.3L148.6,404.4L150.4,404.4L151.8,403.6L153.5,401L151.7,399.3L153,398.1ZM147.6,396.5L149.6,397.2L148,399.4L146.8,397.9L147.6,396.5ZM134.2,396.7L136.5,398L137.5,400.2L136.8,402.8L136,403.9L133.2,405L128.9,403.8L128.2,402.6L130.2,399L131.6,399.4L132.3,398.4L133.8,398.3L134.2,396.7ZM269.1,395.6L269.2,397.1L271.4,397.1L273,398.8L272.9,401.7L271,401L270.9,399.7L266.5,399.1L268.1,395.5L269.1,395.6ZM271,394.3L271.7,396.9L269.7,396.9L269.4,395.2L271,394.3ZM146.4,391.7L147.7,392.3L146.3,396.7L144.8,398.8L144.3,395.7L145.3,392.5L146.4,391.7ZM149.2,389.6L150.2,389.7L150.9,392.7L149.2,392.3L149.2,389.6ZM139.9,387.6L141.5,387.7L143,388.8L144.2,391.7L143.2,395.7L141.8,396.5L139.1,395.2L140,393.6L139.8,390.2L138.4,390.8L137,390.2L138.4,388.4L139.9,387.6ZM140.9,384.5L142.7,384.7L145.3,386.5L144.9,387.8L141.1,386.9L139.8,385.2L140.9,384.5ZM142.2,375.9L140.8,376.6L139.4,378.7L138.9,380.6L138.7,384.2L136.4,385.1L135,384.3L133,384.2L132.5,381.8L133,380.1L135.9,379.1L138.6,376L142.2,375.9ZM130.8,353.9L132.3,356L130.4,356.1L130.8,353.9ZM256.3,359.4L257.7,363.5L258.9,364.1L259.6,366.6L259.8,371.5L265.7,377.3L265.7,380L267.7,382.1L269.1,382.5L269.4,384.1L271.7,385.3L271.9,387.4L273.2,388.6L272.4,391.5L271.3,392.5L271,393.7L268.4,395L266.2,397.2L265.4,398.8L261.3,401.7L259.5,398.7L257.3,398.4L259.2,401.1L257.2,402.8L258.9,405.4L261.5,407.3L263,405.9L263.7,406.6L266,404.4L268.9,404.8L271.1,403.8L272.2,404.3L271.8,409.1L270.6,411.8L269.8,412.7L270.5,414L270.1,416.7L266.5,418.3L264.7,416.2L262.7,414.8L261.2,418.8L260,420.2L260,421.6L261.3,425.7L259.7,426.4L257.2,425.1L255.7,426L254.2,424.1L254.1,421.4L255.4,417.5L256.4,417L257.3,414.5L256.4,414.1L254.6,409.6L251.9,409.3L253.1,407.1L251.8,405.3L251.2,402.5L250.2,402.9L247.8,405.8L242,407.8L243.6,409.2L241.5,410.7L240.9,412.4L242,413.6L241.7,414.6L239.8,416.2L241.2,419.2L246.1,420.8L245.9,423.2L248.2,423.1L247.9,424.8L249,425.1L250.5,431.1L248.9,432.5L246.5,432L245.5,432.7L242.9,431.3L241.5,432.2L242.6,434.2L244.6,435.1L243.8,437.2L242,439.9L240.3,440.1L240,441.7L236.3,443L237,445.8L235.6,446.2L232.9,442.6L231.3,442.1L232.5,440.6L230.4,438.4L226.6,438.3L225.4,437.1L223.3,438.1L220.7,438L219.6,437.4L218.7,435.6L218.8,434.4L221.3,431.9L223.5,430.8L223.6,427.6L225.8,425.5L226.4,427.4L228.1,426L228.5,422.3L229.9,419.3L232.2,418.4L232.8,420.5L232.2,423L235.1,423.8L235.3,422.1L236.6,419.5L235.8,415.1L234.2,415.4L233.3,417.2L231.5,416.2L230.8,417.1L228.9,413.6L226.6,416.6L225.7,419.7L224.3,421.1L221.1,420.9L220,420.1L218.4,422.6L215.2,424L214,426.1L209.3,428.9L210.4,429.8L209.2,430.9L208.3,433.3L208.7,436.3L207.5,436L206.4,437.2L207.5,438.7L206.7,440.1L207.8,441.6L206,443.3L204.6,445.5L203.7,445L199.8,444.6L200.6,447.5L197.6,445.6L195.2,445.4L192.8,443.7L192.9,441.5L192.5,439L192.9,437.1L193,433.3L191.3,430L190.8,434L191,434.8L190.3,437.7L190.2,440.9L188.8,441.5L189.4,443.1L187.7,445.8L185.4,446.3L184,447.7L181.7,448.2L178.9,450.1L179.1,454.5L177.7,455.6L177.7,457.9L176.4,458.3L174.1,458.2L173,460L170.8,460.5L170.4,458.4L171.6,456.9L171,454.2L167.9,454.5L167.9,452.2L169,451.4L168.6,450L170.8,448.9L170.1,447.6L168.5,446.8L167.5,447.7L166,445.4L166.8,444.1L165.8,442.6L167.1,439.6L166.2,437.1L163.9,435.9L163.8,434.8L161.5,435.9L159.7,434L158.3,434.2L156,433L154.4,433.7L153.8,431.3L151.6,430.7L152.1,427.3L150.9,427L150.3,424.3L149.7,423.9L149.9,420.9L151.2,419.1L151.2,417.4L152.2,414.5L153.3,414.1L156.1,416.5L157.4,420L156.5,420.8L156.7,422.9L158.8,426.3L159.5,428.5L164.1,431.3L163.6,428.9L159.2,425.9L158,422.7L156.8,421.7L158.8,420.4L160.4,417.2L158.7,416.5L159.8,415L159.7,413.6L165.3,412L164.7,410.4L161.4,412L158.8,412.2L158.3,411.2L158.9,409L160.4,406.6L161.9,405.1L160.9,403.4L161.5,402.3L160.5,401.3L161.7,399.2L160.7,398.3L160.3,395.6L160.9,394.1L159.6,393.2L158.7,397.5L156.8,398.8L155.7,398.3L155,396L152.9,393.8L153.8,391.7L156,393.2L158,391.6L156.9,390.1L160.5,387.8L159.8,385.6L157.4,386.4L156.8,383.3L155.5,381.5L153.4,385.5L152.6,384.4L150.1,385L151.2,386.5L149.7,389L147.4,388L148.1,385.9L147.1,384.5L144.1,384.5L142.1,383.6L142.6,379.9L144.5,379L147.9,380.5L148.9,379.3L149.9,376.1L151,375.7L155.3,376.9L156.9,375.2L156.9,378.8L156.1,381.1L158.8,383.2L161.1,382.6L161.9,383.9L161.3,387L164.7,384.7L165.5,383L164.6,381.9L166.2,381.1L165,379.7L162.9,379.6L161.6,376.8L158.3,373.6L156.5,371L153.9,372.5L153.1,367.6L154.2,364.8L155.2,365L155.2,361.5L158,361.4L159.6,359.7L159.6,357.4L161.2,353.4L161.8,349.4L163.1,347.5L165.2,347.3L167.7,347.9L168.5,349.2L167.9,351.7L171,355.3L170.9,357.7L171.9,359.6L173.5,359L176.8,359.8L175.9,357.9L177.8,356.8L179.5,358.2L181.1,358.3L182.8,355.2L185.5,355.3L185.9,353.8L187.1,353.8L188,352.7L187.9,350.8L189.7,348L189.4,345.3L190.7,343.7L194.7,343.4L195.7,341.7L197.7,343.7L199.1,344.2L202,346.2L201.5,347L202.3,348.6L204.1,349.7L204.3,350.8L206.8,350.8L207.9,350L207.3,347.6L210.8,344.5L212.5,343.8L212.7,346.7L213.6,347.2L213.1,350.4L212.2,351.3L213.5,352.6L214.3,351.9L215.4,353.7L215,356.7L213.9,356.3L213.5,358.5L214.7,358.6L219,360.3L221.5,358.8L223.3,357.1L225.9,358.7L227,358.7L227.7,356.6L230.7,359.1L232.9,358.9L234.3,360L238.4,358.2L240.7,360L244.5,354.4L247.7,353.6L250.1,354.4L252.5,356.6L256.3,359.4ZM202.2,364.4L200.8,365.6L199.6,365.3L196.7,367.3L194,368.4L190,366.9L190.7,364.9L188.5,365.1L187.1,367.6L187,369.1L185.7,369.5L184.5,368.8L183.7,370.9L182.3,371.1L183.2,373.4L181.8,373.8L181.6,378.3L183.8,379.7L184.5,379.1L188.8,379.6L190.5,381.2L191.8,385L193.2,384.2L195.1,385.1L198.1,382.5L199.4,382.9L203.4,381.3L204.3,382.9L205.8,383L207,381.4L208.7,380.9L210.4,377.9L210.4,374.8L211.4,373.6L209.9,371.5L207.7,371.6L204.3,366.3L204.1,365.2L202.2,364.4ZM163.2,416.4L161.2,416.4L160.4,418.3L165.6,419.7L165.5,421.6L167.1,424.4L167.7,422.3L168.9,423.7L172.9,424.8L172.6,422.1L171.7,419.6L169.3,416.8L167.1,416.5L166.1,417.4L164.2,417.2L163.2,416.4Z"},{"code":"35","name":"전라북도","d":"M153.6,328.1L154.4,328.9L153.7,330.6L152.4,331.1L150.3,333.2L149.1,331.6L150.9,331.3L151.3,329.9L152.6,329.8L153.6,328.1ZM261.1,283.5L262.5,284.7L262.9,286.4L264.9,284.1L265.9,284.7L266.6,287L268.6,287.1L273.2,288.9L274.3,287.6L278.5,286.4L280.4,288.1L280.3,290.6L281.8,291.8L282.9,296.2L280.8,297.5L281.3,298.8L278.3,301.3L277.5,303.6L276.7,303.3L274.9,304.9L273.2,305.1L271.9,306.4L269.8,306L267.7,310.6L266.2,311.4L263,314.4L263,319.3L261.7,320.5L261.2,323.3L260.3,324L259.7,326.1L260.3,328.5L259.1,329.6L258.9,331.8L257.1,333.8L257.4,334.9L260,336.9L260.2,337.8L262.3,341.7L261,342.5L260.9,344.1L261.7,345.3L263.5,345.5L263.1,348.6L261.3,349.8L258.9,353.7L259.9,355.9L259.7,357.1L257.4,359.2L256.3,359.4L252.5,356.6L250.1,354.4L247.7,353.6L244.5,354.4L240.7,360L238.4,358.2L234.3,360L232.9,358.9L230.7,359.1L227.7,356.6L227,358.7L225.9,358.7L223.3,357.1L221.5,358.8L219,360.3L214.7,358.6L213.5,358.5L213.9,356.3L215,356.7L215.4,353.7L214.3,351.9L213.5,352.6L212.2,351.3L213.1,350.4L213.6,347.2L212.7,346.7L212.5,343.8L210.8,344.5L207.3,347.6L207.9,350L206.8,350.8L204.3,350.8L204.1,349.7L202.3,348.6L201.5,347L202,346.2L199.1,344.2L197.7,343.7L195.7,341.7L194.7,343.4L190.7,343.7L189.4,345.3L189.7,348L187.9,350.8L188,352.7L187.1,353.8L185.9,353.8L185.5,355.3L182.8,355.2L181.1,358.3L179.5,358.2L177.8,356.8L175.9,357.9L176.8,359.8L173.5,359L171.9,359.6L170.9,357.7L171,355.3L167.9,351.7L168.5,349.2L167.7,347.9L165.2,347.3L163.7,346.5L164.7,344.9L168.1,338.4L171,336.9L172.8,337.6L174.4,336.2L177.7,336L178.8,334.6L178.9,333.3L181.3,333.3L182.7,334.8L183.2,332.2L180.4,331L178.9,331.8L175.5,331.3L172.7,331.5L171.7,332.4L168.7,331.7L166.8,329.9L166.6,326.9L168.1,324.7L169.4,324.6L172.1,321.6L174.3,320.4L175.1,320.8L177.6,318.3L179.6,315.5L179.3,311.4L180.9,310.5L185.5,310.4L187.8,310.9L191.2,312.5L191.7,310.2L188.2,308.4L185.5,306.3L184.9,305.1L188,303.6L192.6,303.8L193.5,302.9L193.7,300.9L192.3,300.1L191.2,301.4L188.5,301.1L187.5,301.7L185.5,300.9L183.6,300.8L182.9,302L178.7,301.7L178.3,298.6L178.7,296L177.1,295.5L171.7,296.3L171.1,293.2L174.9,292.7L180.9,292.4L182.8,291.9L183.9,290.4L187.6,290.8L188.3,290.2L189.5,287.9L191.6,287.1L194.4,286.9L196,285.6L198.7,284.2L199.6,281.1L199.5,279L201,276.2L203.5,276.4L206.2,274.7L208.9,275.8L210,275.4L211.6,276.6L213.7,276.1L214.7,280.9L216.3,282.5L220.5,283.3L220.8,281.6L223.3,281.9L224.2,280.9L225.8,281.7L226.2,280.3L229.6,280.8L230,279L231.7,279.5L233.4,279L234.4,277.7L237,277.2L238.3,279.5L238.7,281.3L238.8,285L239.9,286.9L242,289.5L244.1,287.7L245.5,289.6L246.5,291.9L247.4,291.5L249,292.5L250.5,292.3L252.7,291.1L253.2,289.1L253.1,287L257.4,287.8L258.1,289.1L259.5,289.5L260.5,286.2L259.6,286.1L260,283.6L261.1,283.5Z"},{"code":"24","name":"광주광역시","d":"M202.2,364.4L204.1,365.2L204.3,366.3L207.7,371.6L209.9,371.5L211.4,373.6L210.4,374.8L210.4,377.9L208.7,380.9L207,381.4L205.8,383L204.3,382.9L203.4,381.3L199.4,382.9L198.1,382.5L195.1,385.1L193.2,384.2L191.8,385L190.5,381.2L188.8,379.6L184.5,379.1L183.8,379.7L181.6,378.3L181.8,373.8L183.2,373.4L182.3,371.1L183.7,370.9L184.5,368.8L185.7,369.5L187,369.1L187.1,367.6L188.5,365.1L190.7,364.9L190,366.9L194,368.4L196.7,367.3L199.6,365.3L200.8,365.6L202.2,364.4Z"}],"bbox":[56.1,274.7,282.9,493.5]},"chungcheong":{"paths":[{"code":"34","name":"충청남도","d":"M157.9,254.8L158.2,257.3L156.5,256.9L157.9,254.8ZM164,251.7L166.1,254.8L161.1,253.5L160.2,252.2L164,251.7ZM156.6,249.8L156.5,252.4L155.2,251.5L156.6,249.8ZM158.2,229L160.1,229.7L161.2,232.1L160.6,235.2L161.1,238.4L163.5,244.1L164.2,248.4L162.9,249.8L161.9,248.9L159.8,248.5L159,249.3L156.3,246.4L155.4,243.5L156,241.2L155,234.5L154.1,233.4L154.1,231.8L156.5,229.4L158.2,229ZM163.6,183.8L165.4,184.9L163.2,185.9L163.6,183.8ZM202.4,199.8L209.3,196.7L212.3,197.5L214.6,196.3L215.7,196.4L218.9,193L220.2,193.8L221.3,193.1L225,195L226,195.1L227.5,197.3L229.4,198.5L231.5,199L233.1,200.9L234.5,201.8L234.4,204L236.8,204.8L236.6,207.2L238.4,207.4L240.5,208.9L242.1,210.8L241.5,211.9L242.9,213.1L242.9,214.6L241.7,215.6L240.9,214.4L236.8,215L237.2,217.1L235.9,217L234.6,218.2L234.5,219.8L232.7,221.2L229.7,220.8L226.2,217.8L222.9,216.9L220.5,219.6L221.3,221.1L222.7,221.1L223,222.5L222.2,223.8L222.4,226.7L222.3,229.7L224.4,230.7L225.3,232.2L225.3,233.8L223.6,236.7L224.4,238.1L223.5,239.1L226.2,244.4L225.9,246.1L227.9,248.1L230.5,249.5L232.5,248.8L232.4,252.8L231.6,254.2L232.1,255.4L230.6,257.6L230.6,260.7L229.8,262L232.4,263.8L232.5,266.7L235.1,268.2L235.8,270L237.2,271.4L238.2,269.1L239.1,268.3L238.8,263.9L239.8,263.1L241.1,263.8L240.9,265.2L242,267L242.6,269L245.4,270.9L247.5,268.8L247.4,268L249.4,266.5L251.5,266.2L252.5,265.4L254,266.4L256.4,267L257.9,268.6L257.5,270.8L258.2,274.1L257.3,276.9L259.5,279.8L259.5,280.9L261.1,283.5L260,283.6L259.6,286.1L260.5,286.2L259.5,289.5L258.1,289.1L257.4,287.8L253.1,287L253.2,289.1L252.7,291.1L250.5,292.3L249,292.5L247.4,291.5L246.5,291.9L245.5,289.6L244.1,287.7L242,289.5L239.9,286.9L238.8,285L238.7,281.3L238.3,279.5L237,277.2L234.4,277.7L233.4,279L231.7,279.5L230,279L229.6,280.8L226.2,280.3L225.8,281.7L224.2,280.9L223.3,281.9L220.8,281.6L220.5,283.3L216.3,282.5L214.7,280.9L213.7,276.1L211.6,276.6L210,275.4L208.9,275.8L206.2,274.7L203.5,276.4L201,276.2L199.5,279L199.6,281.1L198.7,284.2L196,285.6L194.4,286.9L191.6,287.1L189.5,287.9L188.3,290.2L182.4,289.2L182.9,287.1L181,284.7L180.1,284.7L180.2,281L178,279.4L175.6,276.5L174.2,277.3L172.4,275.5L170.4,275.1L171.3,271.8L172.9,270.6L171.8,268.1L171.9,266.4L173.2,263.9L171.6,260.6L170.8,260.3L169.6,257.8L173.6,255.5L170.1,252.3L167.8,252L168.4,249L169.2,247.6L168,245L167.3,240L168.2,238.7L166.4,236.4L165.1,231.7L165.5,230.6L167.5,229.7L167.3,228.6L165.9,227.7L166.8,224.9L166.3,223.8L164.7,223.6L164.9,225.9L163.3,230.3L162.2,230L160.9,228.5L158.5,227.6L158.2,223.4L156.6,223.5L157.1,226.4L157.8,227.6L154.9,230.6L152.7,231.9L151.8,230.7L152.1,228.5L153,227.3L152.1,223.9L150.3,222.9L150.2,220.6L151.1,219.8L150.9,217.7L149.5,218.5L147.6,221L146.2,221L145,222.8L143,222.5L139.6,223.5L139.6,221.5L140.9,221.6L140.9,219.9L142.9,218.4L145.9,219.7L146.9,218.1L145.5,217.6L144,215L142.4,214.5L141,215.2L141.4,217.2L140.1,218.4L138.9,217.6L139.9,216.2L137.3,213L139.5,212.8L140.6,211.4L141.9,207.7L140.8,206.4L142.3,205.6L143.2,206.7L144.7,205.4L144.3,203.5L145.9,200.2L149.2,199.1L148.6,201.4L146.9,202.2L148.6,203.9L149.5,202.3L150.8,201.9L152,200L152.7,197.3L152,193.9L154,192.9L154.4,194.8L153.5,195.9L153.5,198.1L154.9,199.7L154.9,201.1L152.8,206L154.7,206.4L151.8,208.5L153.1,209.4L156.3,208.5L155,206.5L155.3,204.6L156.7,205.4L158.4,205.2L159,203.8L158.4,202.6L161,201L162.1,199.5L159.8,195.9L156,194.3L156.4,192.8L155.3,190.9L159.4,189.1L163.4,188.8L165.4,189.7L167.6,193.4L168.3,192L165.7,187.7L169.3,183.8L171,184.3L171.8,185.9L177.3,188.6L180.7,190.5L185.9,190.3L187,191L192,192.6L192,193.5L193.8,197.8L194.6,197.8L194.9,200.6L195.7,201.6L196.2,204.1L197.5,202.5L200.1,201.5L202.6,201.2L202.4,199.8Z"},{"code":"33","name":"충청북도","d":"M342.9,183.7L341.1,186.4L337.4,185.9L335.9,187.1L336.4,188.7L334.2,191L331.8,191.6L331.7,192.6L327.6,195.5L327.4,196.8L325.9,197.5L325.8,200.1L324.5,202.6L326.4,203.8L326.5,205.4L324.2,209.1L321.1,208.9L319.9,210.2L317.2,208.6L316.2,208.8L314.2,206.8L313.1,204.6L309.8,203L309.1,205.5L307.5,205.4L307.9,208.8L303.6,208.3L301.6,206.9L299.4,208.4L298.9,209.7L297.1,209.9L295,208.7L294.8,211L292.9,215.5L295.9,218.1L296.1,219.6L294.2,219.5L292.1,217.7L290.5,218.6L289.2,218.5L287.2,216.6L286.1,218.5L284.8,219.7L284.8,221L281.2,221.2L284.9,223.8L285.3,225.2L284.8,228.5L281.4,227.3L280.2,224.8L279.2,226.8L278.1,227L278.2,229L276.1,229L274,231.2L276.1,233.2L279.1,233.5L280.1,234.8L280.1,236.5L282.3,237.8L282.8,239.5L280.7,242.2L280.8,244.2L280.1,246.6L280.9,248.1L280.1,249.7L281.5,254.6L280.8,255.8L278.4,257.3L277.5,259.3L278.3,262.7L280.6,262.8L281.6,261.1L284.7,262.5L286.2,264.6L287.7,265.2L288.9,263.9L291.1,263.1L294.1,264.6L292.7,266.3L294.4,268.8L294.5,270.2L293.4,270.9L291.4,269.4L289.2,270.3L288.3,271.5L290,275L289.3,277.4L287.6,278.5L286.9,280.8L287.2,283.5L285.1,285.2L283.6,284.9L282.5,286.4L280.4,288.1L278.5,286.4L274.3,287.6L273.2,288.9L268.6,287.1L266.6,287L265.9,284.7L264.9,284.1L262.9,286.4L262.5,284.7L261.1,283.5L259.5,280.9L259.5,279.8L257.3,276.9L258.2,274.1L257.5,270.8L257.9,268.6L256.4,267L254,266.4L252.5,265.4L251.5,266.2L249.4,266.5L248.9,264.4L249.8,261.6L250.1,257L252.2,253.4L252,251.6L254.5,250.4L253.4,248.2L251.3,248.1L250.2,249.5L249.1,247L250.2,245.4L248.3,244.5L246.2,245.3L244.9,244.6L242.2,244.7L242.3,242L241.6,241.1L242.5,240.8L242.7,237.9L242.1,236.2L240.6,236.1L239.7,234.3L236.9,234L235.9,232.2L234.5,231.9L234,228.7L232.2,226.8L232.8,224.9L233.9,224.4L234.5,222.1L232.7,221.2L234.5,219.8L234.6,218.2L235.9,217L237.2,217.1L236.8,215L240.9,214.4L241.7,215.6L242.9,214.6L242.9,213.1L241.5,211.9L242.1,210.8L240.5,208.9L238.4,207.4L236.6,207.2L236.8,204.8L234.4,204L234.5,201.8L233.1,200.9L234.6,197.4L237.4,195.9L237.9,195L240.2,195.1L242.1,193.5L240.7,191.8L241.5,190.5L244.3,190.1L246.6,188.2L246.6,185.9L248.9,184.9L250,185.5L251.3,184.5L254.3,185.9L255.4,185.6L255.3,184L258.1,181.7L260.6,180.7L261.1,176.2L265,176.8L267.6,171.9L268.3,172L269.1,169.3L270,168.6L269.7,169.2L270.5,172.7L271.6,174.6L273.3,175.8L275.4,175.6L279.2,174.6L280,173.9L282.4,175.1L284,173.8L285.2,171.4L284,167.7L286.1,165.6L289.1,164.5L291.8,165.8L291.9,166.9L293.5,168.7L292.7,170.1L293.5,171.4L296.7,170.9L299.3,169.5L300.4,168.2L302.8,168.7L304.3,168.4L304.3,167L306.5,165.4L308.1,166.3L308.7,167.5L310.7,167.5L312,169.5L315.7,167.9L317.2,168.7L316.6,170.6L312.6,173.1L311.6,174.2L312.3,175.6L313.9,176.5L317,175.3L317.5,174.5L322.6,175.6L322.3,177.4L324.5,179L328.3,179.3L329.5,178.3L331.6,178.9L331.8,180L333.7,181.3L335.6,181.3L338,182.5L340.9,182.8L342.9,183.7Z"},{"code":"29","name":"세종특별자치시","d":"M232.7,221.2L234.5,222.1L233.9,224.4L232.8,224.9L232.2,226.8L234,228.7L234.5,231.9L235.9,232.2L236.9,234L239.7,234.3L240.6,236.1L242.1,236.2L242.7,237.9L242.5,240.8L241.6,241.1L240.4,240.3L238.7,241.8L238.8,243.2L238.2,245.5L236,248.1L233.4,248.1L232.5,248.8L230.5,249.5L227.9,248.1L225.9,246.1L226.2,244.4L223.5,239.1L224.4,238.1L223.6,236.7L225.3,233.8L225.3,232.2L224.4,230.7L222.3,229.7L222.4,226.7L222.2,223.8L223,222.5L222.7,221.1L221.3,221.1L220.5,219.6L222.9,216.9L226.2,217.8L229.7,220.8L232.7,221.2Z"},{"code":"25","name":"대전광역시","d":"M249.4,266.5L247.4,268L247.5,268.8L245.4,270.9L242.6,269L242,267L240.9,265.2L241.1,263.8L239.8,263.1L238.8,263.9L239.1,268.3L238.2,269.1L237.2,271.4L235.8,270L235.1,268.2L232.5,266.7L232.4,263.8L229.8,262L230.6,260.7L230.6,257.6L232.1,255.4L231.6,254.2L232.4,252.8L232.5,248.8L233.4,248.1L236,248.1L238.2,245.5L238.8,243.2L238.7,241.8L240.4,240.3L241.6,241.1L242.3,242L242.2,244.7L244.9,244.6L246.2,245.3L248.3,244.5L250.2,245.4L249.1,247L250.2,249.5L251.3,248.1L253.4,248.2L254.5,250.4L252,251.6L252.2,253.4L250.1,257L249.8,261.6L248.9,264.4L249.4,266.5Z"}],"bbox":[137.3,164.5,342.9,292.5]},"yeongnam":{"paths":[{"code":"37","name":"경상북도","d":"M407.2,325.2L404.2,323.9L399.4,322.3L395.3,325.5L391.9,324.9L391.4,323.7L392.1,321.2L391.4,320.2L389.8,319.9L387.6,318.2L383.9,318.8L382.7,317.8L381.8,319.1L378.1,320.1L376.5,322.2L376.4,324.4L376.9,326.3L374.7,325.3L371.2,328.3L369.4,329.5L365.9,326.8L363.8,326.5L360.6,328.2L359.1,330.6L357.5,330.6L354.9,331.5L353.7,333.7L351.6,333.5L348.8,332.2L347,332.5L346,330.9L343.3,330.5L339.2,332.3L337.4,331.7L335.3,328.8L333.6,327.9L333.7,325.2L332.7,322.1L334.1,318.4L337.1,316.4L340,316.6L339.5,317.8L340.5,320L341.7,319.7L343.8,318.3L345.4,318.1L346.1,317.1L346.4,314.5L345.3,311.3L348,309.7L347.4,307.6L350.9,304.6L351.8,301.9L351.3,298.8L349.8,297.5L350.4,295.9L349.8,294.7L350.4,293.2L349.3,291.8L348.8,289.8L346,288.8L340.1,289.7L337.9,292.4L335.1,293.2L332.8,292.7L333.4,296.3L332.5,298.5L330,300.7L328.6,300.8L328,299.6L328.6,296.7L325.9,296.8L324,298.2L322.8,301.4L321.4,303.8L321.8,305.3L324.4,305.2L327.4,306.2L328.8,307.6L328.1,309.5L324.2,309.4L323.1,310.6L321.5,314L322,315.7L325.2,317.8L325.2,320L324,321L319.3,319.6L318.6,320L319,322.2L321.1,324.8L322.8,326.1L321.4,329.1L320.2,329.2L318.9,326.1L315,324.8L312.7,325.1L311.4,326L309.9,324.7L309.3,326.2L306.5,325.9L305.2,324.5L303.5,325L303.5,323L304.8,322.9L306.6,321.9L306.6,318L305.4,314.9L303.6,314L302.6,311.7L300.7,311.4L300.1,309.9L300.3,308.1L296,306.2L294.4,307.4L292.9,306.7L291.3,307.4L290.1,306.5L289.1,304.6L288,305.2L286.3,304.2L284.9,304.7L284.7,302.5L283.5,301.1L281.7,301.6L281,301L281.3,298.8L280.8,297.5L282.9,296.2L281.8,291.8L280.3,290.6L280.4,288.1L282.5,286.4L283.6,284.9L285.1,285.2L287.2,283.5L286.9,280.8L287.6,278.5L289.3,277.4L290,275L288.3,271.5L289.2,270.3L291.4,269.4L293.4,270.9L294.5,270.2L294.4,268.8L292.7,266.3L294.1,264.6L291.1,263.1L288.9,263.9L287.7,265.2L286.2,264.6L284.7,262.5L281.6,261.1L280.6,262.8L278.3,262.7L277.5,259.3L278.4,257.3L280.8,255.8L281.5,254.6L280.1,249.7L280.9,248.1L280.1,246.6L280.8,244.2L280.7,242.2L282.8,239.5L282.3,237.8L280.1,236.5L280.1,234.8L279.1,233.5L276.1,233.2L274,231.2L276.1,229L278.2,229L278.1,227L279.2,226.8L280.2,224.8L281.4,227.3L284.8,228.5L285.3,225.2L284.9,223.8L281.2,221.2L284.8,221L284.8,219.7L286.1,218.5L287.2,216.6L289.2,218.5L290.5,218.6L292.1,217.7L294.2,219.5L296.1,219.6L295.9,218.1L292.9,215.5L294.8,211L295,208.7L297.1,209.9L298.9,209.7L299.4,208.4L301.6,206.9L303.6,208.3L307.9,208.8L307.5,205.4L309.1,205.5L309.8,203L313.1,204.6L314.2,206.8L316.2,208.8L317.2,208.6L319.9,210.2L321.1,208.9L324.2,209.1L326.5,205.4L326.4,203.8L324.5,202.6L325.8,200.1L325.9,197.5L327.4,196.8L327.6,195.5L331.7,192.6L331.8,191.6L334.2,191L336.4,188.7L335.9,187.1L337.4,185.9L341.1,186.4L342.9,183.7L345.8,185L346.7,186.2L349.5,186.3L350.9,187.4L351.7,186.8L350.9,184.5L352,183.9L353.6,181.5L355.5,182.5L357,182.5L358.5,185.1L360.9,185.8L362.5,185.8L364.6,181.1L366.4,180.8L367.7,182.5L369.5,181.9L376.1,183.5L377.1,181L378.6,180.2L382.3,182.1L386.6,186.2L389.7,185.8L389.1,182.9L391,180.7L392.3,180.1L392.8,178.6L394.6,178.8L395.4,177.4L398.3,175.8L400.3,175.6L401.7,178.3L401.5,180.3L403.6,182.5L405.3,183.9L404.3,185L404,187.9L404.7,189.7L403.9,192.3L404.8,195.2L404.9,200.6L404.4,201.4L405.5,205.5L407.8,208.8L408.3,211.5L409.5,213.5L408.6,214.5L409.4,217L409,217.9L409.3,220.4L408.4,221.7L406.2,223.3L404.1,228L404,230.8L405,233.4L406.4,235.1L406.9,240L405.9,242L406.2,244L406.1,247.4L405.2,249.7L402.8,253.7L401.5,257L401.8,258L401.1,261.4L401.7,262.8L401,264.8L402,266.3L401.9,269.1L400.9,269.6L401.3,271.3L402.6,272.3L403.1,273.8L403,276.8L406.4,280.3L404.6,281.4L404.8,282.6L401.6,284.3L401.2,285.3L401.9,287.3L404.5,289.1L405.5,290.6L407.3,291.1L409.1,289L411.4,287.7L411.5,286.6L413.9,284.5L415,281.8L416.8,282.6L417.9,288.3L417.6,289.5L415.8,291.2L415.6,293.5L414,296.7L412.7,297.6L413.4,299.8L412.8,303L413.4,303.9L412,307.9L412.4,308.7L410.6,311.6L411,313.2L410.1,317.4L409,320L409.3,321.7L407.2,325.2ZM524.5,135.4L524.7,137.4L525.6,138.9L525.1,142.1L521.1,144.3L518.5,143.7L516.1,141.9L516.3,140L515.3,139L519.7,136.7L523.4,136.2L524.5,135.4Z"},{"code":"38","name":"경상남도","d":"M309.4,425.2L311.7,425.7L312.6,428.4L309.9,428L308.4,426.7L309.4,425.2ZM304.5,419.2L306.3,419.6L306.6,421.2L305.1,421.2L304.5,419.2ZM329.3,408.7L330.1,412.1L331.3,413.6L329.9,414.6L328.3,414.2L328.4,412.8L327.4,411.5L329.3,408.7ZM309.4,406.3L311.6,408.5L310.2,410.3L307.5,409.6L306.4,408L307.8,406.5L309.4,406.3ZM306.1,404.3L307.3,405.1L306.1,407.4L305,407.6L303.8,406.1L304,404.9L306.1,404.3ZM293,398.4L293.3,400.5L295.7,403.3L295.2,405.7L295.4,407.3L292.3,405.7L292.2,406.4L289.3,406.7L287.8,406L287.2,403.3L288.6,402.3L290,399.3L290.9,398.4L293,398.4ZM281.9,395.7L283.7,396.3L284.7,398.9L284.1,400.4L282.1,403.1L284.2,407.2L285.7,407.7L286.6,409.8L289.5,407L292.9,407.3L295.2,408.1L295.3,410.4L294.4,410.8L294.9,415.8L292.4,418.4L291.4,417.9L289.1,419.2L286.8,419.4L285.9,417L286.2,412.6L284.6,412.7L282.6,413.7L283.3,416.7L281.2,418.1L279.6,417.7L278.7,416L277.1,415.3L278.4,413.4L277,410L275.2,406.8L274.7,404.6L276.3,402.9L276.6,400.6L278.2,400L278.6,397.7L279.9,396.1L281.9,395.7ZM345.1,386.3L346.3,387.3L347.7,387.1L348.5,388.5L346.9,389.7L346.3,392.4L348.9,395.6L348.3,396.7L348.7,398.8L348.1,400.3L346.4,401.4L347.9,402.8L349.5,401.2L350.2,403.5L346.9,406.3L350,411.1L347.5,410.9L347.5,409.1L346,409.6L344.6,409L344.1,411L344.7,411.7L341.8,414L342.9,416L344.2,415.7L345.4,416.5L340.5,417.1L341.3,418.4L339.5,420.2L337.1,418.7L338.9,417.6L339.1,416.8L336.8,416.2L335.8,413.7L334.1,412.8L333.7,411.5L337,410.9L337.4,410.1L337.6,407.1L336.9,404.9L334.2,406.9L331.9,409.5L330.7,407L329.1,406.3L328.4,402.6L330.3,399.8L331.9,399.3L332.8,397.9L334.5,399.5L337.3,398.9L338.5,400.2L339.6,400.2L338.4,396.7L337.5,395.7L340.3,394.1L342.4,394L342.7,392.4L340.4,391.7L341.2,389.4L342.5,388.5L342.9,391.5L344.1,389.7L345.1,386.3ZM320.2,329.2L321.1,329.6L325.1,328L326.3,326.5L329.4,326.8L331,326.4L331.3,322.8L332.7,322.1L333.7,325.2L333.6,327.9L335.3,328.8L337.4,331.7L339.2,332.3L343.3,330.5L346,330.9L347,332.5L348.8,332.2L351.6,333.5L353.7,333.7L354.9,331.5L357.5,330.6L359.1,330.6L360.6,328.2L363.8,326.5L365.9,326.8L369.4,329.5L371.2,328.3L372.6,328.8L373,330.2L372.5,331.9L370.5,333.4L368.6,334.2L370.5,337.4L372.8,337.8L379.5,340.8L379.7,342.3L382.2,345.4L383.9,346.8L385.2,347.1L386.7,346.4L388.6,349.4L387.3,351.5L386.5,354.2L385,355.2L382.9,353.9L381.2,355.8L379.9,359.4L378.1,360L376.8,361.3L375.7,360.8L374.9,362.3L371.9,363L370.7,366.9L364.7,368.7L361.6,368.9L360.5,370.1L361.4,372.1L360.1,373.6L358.3,374.5L354.3,374.5L355,376.1L357.4,377.4L358.2,379.6L356.6,380.4L355,381.4L353.1,380.1L349.4,381.1L347,379.8L345.8,375.3L343.7,377.3L341.5,375.4L339.8,375.8L338.2,373.1L337.5,369.3L335.8,371.9L338.7,377L338.9,379.9L340.5,381.3L341.6,383.5L339,384.8L336.9,385.2L335.5,383.4L335.6,382L333.4,379.1L332.1,380.6L329.7,379.6L328,380.6L327.5,383.2L325.8,383.1L324.8,384.8L323.5,384.1L321,385.4L321.7,386.8L326.2,385.2L326.4,383.3L329.2,383.9L328.3,386.2L330.8,388.9L328.9,391.1L327.6,391.6L325.7,390.9L325.8,394.1L325.1,394.6L325.3,397.1L324.2,400.8L325.1,402.6L326.7,398.8L328.1,401.6L327.1,402.6L326.8,405.7L324.4,407L325.9,407.6L325.9,410L325.4,412.4L324.6,413.8L323.1,414.1L321.7,411.3L320.7,410.8L320.8,408.8L317.7,407.5L319.2,406.3L320.6,407.7L320.7,405.1L322.1,403.9L320.5,402.2L319.6,403.3L316.3,401.9L314.4,400.1L315.1,399.4L319,399.4L318.2,397L317.2,395.9L314.5,396.7L314.5,399.1L313.1,399.9L311.7,399L312,396.9L309.7,395.9L306.1,396.6L306.7,397.9L306.2,399.1L306.6,400.9L304.6,400.8L300.1,399.9L296.5,398L294.8,397.5L292.7,394.7L294.5,392.5L293.4,390.2L294.3,388.7L292.4,387L291,387.9L291.7,389.5L291.5,391.1L289.4,391.4L288.9,392.5L287.2,391.5L286.1,392.6L284.8,391L284.5,389L282.5,393.3L282.6,394.5L280.2,395.6L277.2,395.3L273,396.3L271.4,393L272.4,391.5L273.2,388.6L271.9,387.4L271.7,385.3L269.4,384.1L269.1,382.5L267.7,382.1L265.7,380L265.7,377.3L259.8,371.5L259.6,366.6L258.9,364.1L257.7,363.5L256.3,359.4L257.4,359.2L259.7,357.1L259.9,355.9L258.9,353.7L261.3,349.8L263.1,348.6L263.5,345.5L261.7,345.3L260.9,344.1L261,342.5L262.3,341.7L260.2,337.8L260,336.9L257.4,334.9L257.1,333.8L258.9,331.8L259.1,329.6L260.3,328.5L259.7,326.1L260.3,324L261.2,323.3L261.7,320.5L263,319.3L263,314.4L266.2,311.4L267.7,310.6L269.8,306L271.9,306.4L273.2,305.1L274.9,304.9L276.7,303.3L277.5,303.6L278.3,301.3L281.3,298.8L281,301L281.7,301.6L283.5,301.1L284.7,302.5L284.9,304.7L286.3,304.2L288,305.2L289.1,304.6L290.1,306.5L291.3,307.4L292.9,306.7L294.4,307.4L296,306.2L300.3,308.1L300.1,309.9L300.7,311.4L302.6,311.7L303.6,314L305.4,314.9L306.6,318L306.6,321.9L304.8,322.9L303.5,323L303.5,325L305.2,324.5L306.5,325.9L309.3,326.2L309.9,324.7L311.4,326L312.7,325.1L315,324.8L318.9,326.1L320.2,329.2Z"},{"code":"22","name":"대구광역시","d":"M332.7,322.1L331.3,322.8L331,326.4L329.4,326.8L326.3,326.5L325.1,328L321.1,329.6L320.2,329.2L321.4,329.1L322.8,326.1L321.1,324.8L319,322.2L318.6,320L319.3,319.6L324,321L325.2,320L325.2,317.8L322,315.7L321.5,314L323.1,310.6L324.2,309.4L328.1,309.5L328.8,307.6L327.4,306.2L324.4,305.2L321.8,305.3L321.4,303.8L322.8,301.4L324,298.2L325.9,296.8L328.6,296.7L328,299.6L328.6,300.8L330,300.7L332.5,298.5L333.4,296.3L332.8,292.7L335.1,293.2L337.9,292.4L340.1,289.7L346,288.8L348.8,289.8L349.3,291.8L350.4,293.2L349.8,294.7L350.4,295.9L349.8,297.5L351.3,298.8L351.8,301.9L350.9,304.6L347.4,307.6L348,309.7L345.3,311.3L346.4,314.5L346.1,317.1L345.4,318.1L343.8,318.3L341.7,319.7L340.5,320L339.5,317.8L340,316.6L337.1,316.4L334.1,318.4L332.7,322.1Z"},{"code":"26","name":"울산광역시","d":"M407.2,325.2L406.5,327.2L408.2,329.9L408.4,331.7L407.4,333.1L407.9,334.4L406.8,338.1L406.3,341.7L401.9,342.8L399.1,345.5L400.3,346.1L400.2,349.2L398.8,352.7L399.8,354.7L396.9,355.7L395.5,357.4L393.5,356.2L393.8,354L392.3,351.7L388.5,352.4L387.3,351.5L388.6,349.4L386.7,346.4L385.2,347.1L383.9,346.8L382.2,345.4L379.7,342.3L379.5,340.8L372.8,337.8L370.5,337.4L368.6,334.2L370.5,333.4L372.5,331.9L373,330.2L372.6,328.8L371.2,328.3L374.7,325.3L376.9,326.3L376.4,324.4L376.5,322.2L378.1,320.1L381.8,319.1L382.7,317.8L383.9,318.8L387.6,318.2L389.8,319.9L391.4,320.2L392.1,321.2L391.4,323.7L391.9,324.9L395.3,325.5L399.4,322.3L404.2,323.9L407.2,325.2Z"},{"code":"21","name":"부산광역시","d":"M395.5,357.4L392.3,358.4L391.9,362.2L390.5,363.9L391.3,365.6L389.7,368.9L389,371.7L386.9,372.5L386.6,374.2L381.9,374.9L380.6,376.9L381.2,379.3L380.8,380.3L378.5,380.4L376.3,379.5L376.2,378L374.9,378L374.2,379.5L376.4,380.7L377.4,383.2L378.7,384.3L377.6,385.3L373.7,381.8L372.7,384.1L371,385.5L369.5,385.5L368.2,387L367,382.5L364.6,381.7L363.8,382.4L357.6,382.3L358.8,385.1L358.8,387L357.7,389L355.3,388.3L355.8,386.3L354.5,384.9L356.4,384.2L357.3,383L356.6,380.4L358.2,379.6L357.4,377.4L355,376.1L354.3,374.5L358.3,374.5L360.1,373.6L361.4,372.1L360.5,370.1L361.6,368.9L364.7,368.7L370.7,366.9L371.9,363L374.9,362.3L375.7,360.8L376.8,361.3L378.1,360L379.9,359.4L381.2,355.8L382.9,353.9L385,355.2L386.5,354.2L387.3,351.5L388.5,352.4L392.3,351.7L393.8,354L393.5,356.2L395.5,357.4Z"}],"bbox":[256.3,135.4,604.8,428.4]},"gyeonggi":{"paths":[{"code":"31","name":"경기도","d":"M178.1,159.4L176.2,160.8L175.1,162.3L177.2,164L178.2,164L179.3,166.6L181.5,167.7L181.2,169.2L178.4,168.4L177.7,169.5L176.3,168.2L174.9,169.9L173,169.6L172.8,167.8L174.3,166.1L174.5,164.7L173.3,162.3L174.9,162.1L175.8,160.7L178.1,159.4ZM270,168.6L269.1,169.3L268.3,172L267.6,171.9L265,176.8L261.1,176.2L260.6,180.7L258.1,181.7L255.3,184L255.4,185.6L254.3,185.9L251.3,184.5L250,185.5L248.9,184.9L246.6,185.9L246.6,188.2L244.3,190.1L241.5,190.5L240.7,191.8L242.1,193.5L240.2,195.1L237.9,195L237.4,195.9L234.6,197.4L233.1,200.9L231.5,199L229.4,198.5L227.5,197.3L226,195.1L225,195L221.3,193.1L220.2,193.8L218.9,193L215.7,196.4L214.6,196.3L212.3,197.5L209.3,196.7L202.4,199.8L202,197.7L200.6,196.7L198.8,197L198.6,195.4L197.3,194.3L195.6,191.6L195.5,190.7L193.4,189.5L192.7,187.4L189.6,187.4L189.4,185.4L190.5,183.5L191.2,180L190.3,179.2L191.1,177.5L193.2,177.4L194,175.1L192.8,172.8L191.8,173.8L189.3,173.7L187.8,176.4L184.6,178.7L183.4,176.5L184.1,175.4L182.4,174.1L182.8,169.4L183.7,167.9L182.7,166.6L184.5,164L188.3,165.2L190.1,164.8L192.7,165.8L192.8,163.6L195.7,161.4L193.9,160.7L191.4,161.3L187.6,160.1L187.4,158.9L184.9,156.9L184.6,155.4L185.6,154.8L188.5,150.7L189.8,148L191.1,147.5L191.8,145.2L191,143.1L188.9,141.6L189.2,138.9L190.4,138.6L191,134.9L191.3,135.4L195.4,136.2L195.9,137.6L194.8,141L195.4,142.7L196.8,142.7L199.1,140.9L201.9,146.9L203.7,145.4L204.8,146.7L206.7,146.2L210,143.6L210.6,144.7L212.7,144.6L212.6,146.2L213.9,147.4L215,147.4L217.6,144.4L219.2,144.1L221.5,142.6L222.7,140.3L221,139.4L222.9,135.8L224.1,135.6L224.4,134.2L223.7,132.3L217.9,134.3L217.9,131.9L219.2,129.8L218.4,125.8L217.1,125.3L217.4,121.4L216.3,120.6L213.8,121.5L211,120.2L210.3,121.8L209.1,122.5L208.1,124.8L208.5,126.6L207.7,127.1L205.5,124.4L202.7,125.8L201.7,129L201.8,130.8L199.7,132.3L197.7,132.7L195.2,131.2L194,129.9L193.1,132.1L189,130.9L187.6,131.1L185.4,128.5L182.1,126.5L180.4,127.5L179.7,129.6L178.2,129.9L175.3,131.5L173.8,129.3L173.4,127.6L171.7,125L172.3,123.6L171.3,122.6L171.6,120L170.9,119L171.5,116.5L171.7,115.4L170.6,113.6L172.3,113.1L173.9,113.4L174.8,114.7L178.2,115L180.6,112.4L182.5,111.3L183.4,107.2L182.3,106.4L184.8,103.6L183.3,101.6L183.7,100.5L182.8,98.2L183.4,94.7L184.8,95.9L186.7,96.3L189.1,95.1L188.8,93L190.6,91.8L192,92L193.3,90.9L196,91L195.5,89.1L196.2,86.9L197.9,87.1L199.4,88.4L200.1,86.4L201.1,85.1L201.1,82.8L199,82.2L197.6,80.8L195.8,82.4L195.3,81.5L193.3,82.1L192.4,80.4L189.4,77.5L191.2,74.8L195.7,70.5L199.5,68L201.3,69.8L203.7,69.9L205.9,69.2L206.9,70.5L208.4,69.1L207.7,66.9L209,66.6L211.8,64.5L215.4,63.2L218.5,61.1L218.9,63.7L218.6,66.1L220.2,67L221.7,66L222.8,67.1L223.4,68.9L223.1,70.3L224.2,71.8L225,74.2L227.7,75.6L230.3,74L231.6,72.1L233,72.6L232.9,75L231.9,76.6L232.5,78.6L234.8,78.7L235.6,80.8L240.6,78.8L242.2,79L243,80.1L244.4,78.8L245.3,79.5L245.7,83.2L245.5,84.4L246.6,88.7L247.8,89.7L250.1,90.3L253.2,90.2L253.9,92.4L253.6,93.5L258.3,94.8L259.2,96.3L259.5,99.6L258.2,102.8L256.8,102.7L255,104.7L252.6,106.1L252.1,107.9L252.9,109.4L251.8,111.1L253.6,114.2L250.6,117.2L253.3,118.4L255,118.2L254.1,121.7L254.3,124.1L253,126L254.8,127.4L256.4,127L258.3,125.1L260.3,126L262.4,128L265.9,130.2L266.8,131.6L270.5,131.1L271.5,132L273.6,131.7L275.2,133.8L278.2,135L277.6,136.4L274.7,136.8L272.1,139.7L272.1,141.1L273.9,143.9L274.5,147.4L273.8,147.9L272.4,151.4L272.4,153.2L270.9,153.6L270.9,157.3L271.7,159.5L270.5,160.5L270.8,164.5L270.1,165.5L270,168.6Z"}],"bbox":[170.6,61.1,278.2,200.9]},"gangwon":{"paths":[{"code":"32","name":"강원도","d":"M400.3,175.6L398.3,175.8L395.4,177.4L394.6,178.8L392.8,178.6L392.3,180.1L391,180.7L389.1,182.9L389.7,185.8L386.6,186.2L382.3,182.1L378.6,180.2L377.1,181L376.1,183.5L369.5,181.9L367.7,182.5L366.4,180.8L364.6,181.1L362.5,185.8L360.9,185.8L358.5,185.1L357,182.5L355.5,182.5L353.6,181.5L352,183.9L350.9,184.5L351.7,186.8L350.9,187.4L349.5,186.3L346.7,186.2L345.8,185L342.9,183.7L340.9,182.8L338,182.5L335.6,181.3L333.7,181.3L331.8,180L331.6,178.9L329.5,178.3L328.3,179.3L324.5,179L322.3,177.4L322.6,175.6L317.5,174.5L317,175.3L313.9,176.5L312.3,175.6L311.6,174.2L312.6,173.1L316.6,170.6L317.2,168.7L315.7,167.9L312,169.5L310.7,167.5L308.7,167.5L308.1,166.3L306.5,165.4L304.3,167L304.3,168.4L302.8,168.7L300.4,168.2L299.3,169.5L296.7,170.9L293.5,171.4L292.7,170.1L293.5,168.7L291.9,166.9L291.8,165.8L289.1,164.5L286.1,165.6L284,167.7L285.2,171.4L284,173.8L282.4,175.1L280,173.9L279.2,174.6L275.4,175.6L273.3,175.8L271.6,174.6L270.5,172.7L269.7,169.2L270,168.6L270.1,165.5L270.8,164.5L270.5,160.5L271.7,159.5L270.9,157.3L270.9,153.6L272.4,153.2L272.4,151.4L273.8,147.9L274.5,147.4L273.9,143.9L272.1,141.1L272.1,139.7L274.7,136.8L277.6,136.4L278.2,135L275.2,133.8L273.6,131.7L271.5,132L270.5,131.1L266.8,131.6L265.9,130.2L262.4,128L260.3,126L258.3,125.1L256.4,127L254.8,127.4L253,126L254.3,124.1L254.1,121.7L255,118.2L253.3,118.4L250.6,117.2L253.6,114.2L251.8,111.1L252.9,109.4L252.1,107.9L252.6,106.1L255,104.7L256.8,102.7L258.2,102.8L259.5,99.6L259.2,96.3L258.3,94.8L253.6,93.5L253.9,92.4L253.2,90.2L250.1,90.3L247.8,89.7L246.6,88.7L245.5,84.4L245.7,83.2L245.3,79.5L244.4,78.8L243,80.1L242.2,79L240.6,78.8L235.6,80.8L234.8,78.7L232.5,78.6L231.9,76.6L232.9,75L233,72.6L231.6,72.1L230.3,74L227.7,75.6L225,74.2L224.2,71.8L223.1,70.3L223.4,68.9L222.8,67.1L221.7,66L220.2,67L218.6,66.1L218.9,63.7L218.5,61.1L220.8,59.3L221.3,57.4L222.6,56.8L224.4,58.6L225.6,58.4L229.3,56.4L230.6,57.1L233.4,57.5L234.7,58.6L237,57.1L237.8,57.4L241,56.3L243.9,56.8L245.9,58.5L248,58.5L248.9,59.9L250.7,59.9L253.4,57.7L257.1,56.3L258.6,56.2L261.2,57.4L265.3,57L266.1,55.9L268.6,56.5L269.9,55.5L272.4,54.9L274.4,57.7L277.7,57.3L281,55.9L284.3,56.6L288.5,58.2L295.4,58.9L302.5,55.1L307.7,52L309.9,50L310.4,49L313.1,46.7L314.6,43.1L315.7,33.8L315.4,31.1L316.2,29.3L318.6,28.9L322.3,33.6L323,36.1L324.4,38L324.4,39.7L325.8,42.5L328,45.1L327.1,45.6L327.2,47.3L328.3,49.2L331.9,53.1L332.7,56.4L334.7,58.9L336.2,63.4L337.9,66L337.6,67.2L338.4,70.4L339.4,71.9L339.4,75.2L341.6,78.6L344.1,81.1L345,83.7L346.9,86.2L348.9,87.9L349.6,89.8L352.6,94.8L354,95.8L354,96.8L357.6,100.5L357.2,101.8L361.1,106.3L361.2,107.3L369.9,116.3L372,119.4L375.5,122.7L375.5,124.2L374.5,126L375.3,128.1L380.4,132.6L380.7,134.6L380,136.3L380.8,138.2L383.8,142.6L386,144.7L386.9,148.7L388.7,150.6L391.1,152.2L391.2,153.9L392.5,156L392.7,158L395.3,159.9L395.2,161L397.4,162.2L397.3,163.7L399.7,166.7L398.4,167.7L399,169.1L398.3,170.8L398.4,172.5L400.3,175.6Z"}],"bbox":[218.5,28.9,400.3,187.4]},"incheon":{"paths":[{"code":"23","name":"인천광역시","d":"M135.5,179.4L136.3,180.8L135.1,181.9L134,180.7L135.5,179.4ZM136.9,171.6L138.2,173.2L136.7,173.6L136.9,171.6ZM152.3,163L154.7,164L153.6,164.9L151.9,163.9L152.3,163ZM137.8,163L138.7,164.5L140.8,166.4L142.1,166.7L140.6,168.9L138.6,169.4L138.2,168.1L136.5,167.3L136.3,165.6L137.8,163ZM167.1,161.5L168.5,162L169.5,164.5L167.9,165.3L166,167.7L163.9,166.8L164.4,163L167.1,161.5ZM162.3,149.1L164.7,151.7L164.2,153.2L162.4,153.7L161.3,150.2L162.3,149.1ZM175.7,140.2L176.3,141.3L174.8,142.3L172.8,142.5L170,143.7L169.1,145.5L164.7,148.2L162.9,148.1L162.6,147L161,145.7L159.1,145.5L157.8,143.6L159.2,143.1L163.9,139.9L166.6,140.3L168,139.9L169.3,137.1L171.5,137.5L174.7,138.8L175.7,140.2ZM166.3,135.8L167.3,136.5L166.8,139.2L163.9,137.7L166.3,135.8ZM154,134.2L158.2,137.2L155.5,137.6L155.6,136.2L154,134.2ZM193.1,132.1L191,134.9L190.4,138.6L189.2,138.9L188.9,141.6L191,143.1L191.8,145.2L191.1,147.5L189.8,148L188.5,150.7L187.9,151.5L182.4,156L178.9,156L178.4,152.9L177.3,151.8L177.3,147.4L176.9,143.9L177.8,140.6L177.7,137.5L178,134.9L176.9,134.3L175.3,131.5L178.2,129.9L179.7,129.6L180.4,127.5L182.1,126.5L185.4,128.5L187.6,131.1L189,130.9L193.1,132.1ZM147.9,124.6L149.6,124.9L148.9,127.2L147.3,125.4L147.9,124.6ZM106.2,122.3L105.8,123.7L103.6,124.9L103.6,122.2L106.2,122.3ZM144.8,121.4L146.1,123.6L145.6,124.7L143.4,123.3L144.8,121.4ZM155.6,115.3L155,118.7L157,120.4L159.1,120.8L159.5,123.5L156.7,125.9L155.3,126.1L155.5,124.1L154.7,122.1L152.1,120.7L150.9,119.4L152.1,118.5L152.4,115.9L155.6,115.3ZM150.5,108.7L152.7,109.8L155.5,109.8L156.1,110.4L154.6,112.8L152.7,113.8L151,113.3L149.1,113.7L147.4,115L145.8,113.4L147,111.2L147.1,109.7L148.2,108.6L150.5,108.7ZM171.5,116.5L170.9,119L171.6,120L171.3,122.6L172.3,123.6L171.7,125L171.9,126.4L173.2,129.8L171.3,130.6L170.7,132.3L169.4,131.3L167.8,131.9L167.3,130.5L164.2,131L161.7,130.9L159.6,129.3L159.1,127L161.8,125.2L160.3,121.3L157.5,119.7L156.8,118.2L156.6,115.4L157.7,114.4L157.2,111.1L159.1,109.7L160.9,107.7L164.3,107.2L166.6,109.8L170.1,111.9L170.4,113.9L171.5,116.5ZM24.9,105.6L26.1,105.6L26,108.6L25.3,109.6L23,109.7L22.7,108.1L24.9,105.6ZM23.2,92.1L24.8,91.9L26.7,92.4L26.8,94.9L25,95.9L24,98.7L19.2,97.9L17.2,94.2L17.5,92.6L19.4,93.4L23.2,92.1Z"}],"bbox":[17.2,91.9,193.1,181.9]},"seoul":{"paths":[{"code":"11","name":"서울특별시","d":"M191,134.9L193.1,132.1L194,129.9L195.2,131.2L197.7,132.7L199.7,132.3L201.8,130.8L201.7,129L202.7,125.8L205.5,124.4L207.7,127.1L208.5,126.6L208.1,124.8L209.1,122.5L210.3,121.8L211,120.2L213.8,121.5L216.3,120.6L217.4,121.4L217.1,125.3L218.4,125.8L219.2,129.8L217.9,131.9L217.9,134.3L223.7,132.3L224.4,134.2L224.1,135.6L222.9,135.8L221,139.4L222.7,140.3L221.5,142.6L219.2,144.1L217.6,144.4L215,147.4L213.9,147.4L212.6,146.2L212.7,144.6L210.6,144.7L210,143.6L206.7,146.2L204.8,146.7L203.7,145.4L201.9,146.9L199.1,140.9L196.8,142.7L195.4,142.7L194.8,141L195.9,137.6L195.4,136.2L191.3,135.4L191,134.9Z"}],"bbox":[191.0,120.2,224.4,147.4]},"jeju":{"paths":[{"code":"39","name":"제주특별자치도","d":"M206.1,537.8L207.4,540.1L207,541.4L205.5,541L204.9,539.9L206.1,537.8ZM192,533.6L193.6,534.6L195.8,534.3L196.1,535.7L198.2,537.6L199.4,537.2L201.8,537.7L202.9,540.2L202,541.6L202.7,543L204.6,542.9L204.9,544.1L203.8,545.1L202.3,549.7L202.2,551.2L200.9,551.6L199.5,553.2L199.1,555L197.2,557L197.6,557.8L196.5,559.5L194.3,560.2L191.9,559.7L189.2,562.5L188.1,562.5L184.9,563.4L182.3,563.2L180.8,563.8L179,566.2L177.3,566.7L176.3,565.9L173.3,566.6L171.1,566.3L170.1,567.3L168.5,567.3L167,568.1L165.4,566.3L163.9,567.1L162.4,565.9L160.1,567.2L154.9,566.5L153.1,568.1L152.7,569.7L151,570.9L149.2,569L147.8,566.9L145.2,565.7L143.8,564.4L141.9,561.1L142.5,560.4L142.1,557.9L142.6,555.7L144.4,553.8L146.2,552.7L147,551.2L148.2,550.7L150.1,548.6L150.1,546.9L153.7,545.2L153.9,543.7L156.1,543.6L160.2,541.3L160.9,541.9L167.8,539.3L168.9,538.2L170.6,538.7L172.6,537.2L173.3,538.2L176,537.6L177.3,536.5L180.1,536.5L181,534.7L182.1,535.1L186.9,534.7L187.6,534.2L190,534.4L192,533.6Z"}],"bbox":[141.9,533.6,207.4,570.9]}},"dokdo":[601.8,165.8]};
+
+/* ==========================================================================
+   지역 정보와 문법 탐구 질문 (프롬프트 5·6장 내용 그대로)
+   photo: 사진을 넣으려면 이용 허락이 분명한 이미지 정보를 채우세요.
+     예) photo:{src:"이미지 주소", author:"저작자", license:"CC BY-SA 4.0", source:"원본 페이지 주소"}
+   사진을 불러오지 못하면 자동으로 아이콘이 표시됩니다.
+   ========================================================================== */
+const REGIONS = [
+ { id:"seoul", name:"서울", label:[126.98,37.6],
+   desc:"조선 500년의 도읍이자 오늘날 대한민국의 수도입니다.",
+   cities:[
+    { name:"서울", lon:126.978, lat:37.566,
+      photo:null, // 여기에 경복궁 사진 추가 가능
+      sights:["경복궁","창덕궁·종묘(유네스코 세계유산)","북촌한옥마을","남산서울타워","청계천","국립중앙박물관"],
+      food:["설렁탕","신선로 같은 궁중음식","장충동 족발","신당동 떡볶이"],
+      people:["세종대왕(한양 출생, 훈민정음 창제)","정도전(한양 도읍 설계)"],
+      events:["1394년 한양 천도로 조선의 수도가 됨","1919년 탑골공원 독립선언서 낭독과 3·1운동 시작","1988년 서울올림픽","2002년 한일월드컵 개막전"] }],
+   questions:[
+    ["","음운 변동","'종로'와 '신선로'를 소리 내어 읽어 보자. 표기와 실제 발음은 어떻게 다른가? 두 단어의 변화는 같은 원리일까, 다른 원리일까?"],
+    ["","음운 변동","'국립중앙박물관'을 소리 내어 읽고 발음을 적어 보자. 표기와 달라지는 부분을 모두 찾고, 어떤 순서로 변화가 일어나는지 설명해 보자."],
+    ["","단어의 짜임","'북촌한옥마을'을 더 작은 단어로 나누어 보자. 각 부분은 어떤 방식으로 결합했을까?"]]},
+
+ { id:"incheon", name:"인천", label:[126.2,37.62],
+   desc:"개항과 전쟁의 무대가 된 한국의 관문 도시입니다.",
+   cities:[
+    { name:"인천", lon:126.705, lat:37.456,
+      photo:null, // 여기에 차이나타운·개항장 거리 사진 추가 가능
+      sights:["차이나타운·개항장 거리","월미도","송도 센트럴파크","강화 고인돌(유네스코 세계유산)","강화 전등사","인천상륙작전기념관"],
+      food:["짜장면(인천 차이나타운 유래설, 옛 공화춘 건물에 짜장면박물관)","쫄면(인천 유래설)"],
+      people:["김구(청년 시절 인천 감옥 수감)","맥아더(인천상륙작전 지휘, 자유공원 동상)"],
+      events:["1866년 병인양요·1871년 신미양요(강화도)","1876년 강화도조약","1883년 제물포 개항","1899년 한국 최초의 철도 경인선 개통","1950년 인천상륙작전(6·25전쟁의 흐름을 바꿈)"] }],
+   questions:[
+    ["","단어의 짜임","'고인돌'은 '고이다(괴다)'와 '돌'이 결합한 말이다. 두 말이 결합한 방식은 우리말 문장에서 단어를 이어 쓰는 방식과 같을까, 다를까?"],
+    ["","단어의 짜임","'경인선'이라는 이름은 어떤 두 지명에서 한 글자씩 따온 것일까? 이런 방식으로 만든 말을 지도 속 지명에서 더 찾아보자."]]},
+
+ { id:"gyeonggi", name:"경기", label:[127.35,37.08],
+   desc:"수도를 둘러싼 지역으로, 조선 왕실 유적과 분단의 현장이 함께 있습니다.",
+   cities:[
+    { name:"안산", lon:126.831, lat:37.322,
+      photo:null, // 여기에 대부도·시화호 조력발전소 사진 추가 가능
+      sights:["대부도","탄도항·누에섬","시화호 조력발전소","안산갈대습지","원곡동 다문화음식거리","성호기념관"],
+      food:["대부도 바지락칼국수","다문화거리의 여러 나라 음식"],
+      people:["김홍도(어린 시절 안산에 살던 강세황에게 그림을 배운 것으로 알려짐, '단원구' 이름의 유래)","성호 이익(실학자, 안산에서 평생 학문)","최용신(소설 《상록수》의 모델, 샘골강습소, '상록구' 이름의 유래)"],
+      events:["1970년대 반월신도시·산업단지 건설","1986년 시 승격"] },
+    { name:"수원", lon:127.009, lat:37.264,
+      photo:null, // 여기에 수원 화성 사진 추가 가능
+      sights:["수원 화성(유네스코 세계유산)","화성행궁","행궁동 벽화마을"],
+      food:["수원 왕갈비","통닭거리"],
+      people:["정조(화성 축성)","정약용(거중기 설계)"],
+      events:["1794~1796년 화성 축성","1795년 혜경궁 홍씨 회갑연(을묘원행)"] },
+    { name:"화성", lon:126.831, lat:37.200,
+      photo:null,
+      sights:["융릉·건릉(유네스코 세계유산 조선왕릉)","용주사","제부도","궁평항"],
+      food:["궁평항·전곡항 해산물"],
+      people:["사도세자(융릉)","정조(건릉)"],
+      events:["1919년 제암리 학살 사건(일본군이 만세운동에 참여한 주민들을 교회에 가두고 학살)"] },
+    { name:"용인", lon:127.178, lat:37.241,
+      photo:null,
+      sights:["한국민속촌","에버랜드","백남준아트센터","경기도박물관"],
+      food:["백암순대"],
+      people:["정몽주(묘소)","조광조(묘소·심곡서원)","김윤후(처인성 전투)"],
+      events:["1232년 처인성 전투(김윤후가 몽골 장수 살리타 사살, '처인구' 이름의 유래)"] },
+    { name:"파주", lon:126.780, lat:37.760,
+      photo:null,
+      sights:["임진각","도라전망대","제3땅굴","헤이리 예술마을","파주출판도시","화석정"],
+      food:["장단콩 요리"],
+      people:["율곡 이이(묘소·자운서원)","황희(반구정)"],
+      events:["1953년 판문점 정전협정 체결","1978년 제3땅굴 발견","2018년 판문점 남북정상회담"] }],
+   questions:[
+    ["안산","음운 변동","'상록수'의 발음을 적어 보자. 표기와 발음 사이에는 몇 가지 차이가 있는가? 각각의 변화가 왜 일어나는지 설명해 보자."],
+    ["안산","음운 변동","'조력발전소'와 '갈대습지'를 소리 내어 읽어 보자. 표기에는 드러나지 않지만 발음에서 공통으로 나타나는 변화는 무엇일까?"],
+    ["안산","단어의 짜임","'바지락칼국수'를 단어 단위로 나누어 보자. 몇 개의 어근이 결합한 말일까?"],
+    ["수원","단어의 짜임","'왕갈비'의 '왕'과 '왕이 살던 궁'의 '왕'은 같은 성격의 말일까? 비교해 보자."],
+    ["수원","음운 변동","'통닭'을 단독으로 읽을 때와 '통닭이'처럼 조사를 붙여 읽을 때의 발음을 비교해 보자. 받침 'ㄺ'은 각각 어떻게 소리 나는가?"],
+    ["수원","음운 변동","'벽화마을'의 '벽화'는 어떻게 발음되는가? 받침과 뒤 음절 첫소리가 만나 어떤 일이 일어나는지 설명해 보자."],
+    ["화성","음운 변동","'융릉'의 두 번째 음절 첫소리는 어떻게 발음되는가? 앞 음절의 받침과 관련지어 설명해 보자."],
+    ["화성","품사","'만세를 부르다'의 '만세'와 '대한 독립 만세!'의 '만세'는 각각 어떤 품사로 쓰였을까?"],
+    ["용인","음운 변동","'한국민속촌'의 발음을 적어 보자. '국'의 받침은 어떻게 바뀌며, 그 까닭은 무엇일까?"],
+    ["용인","단어의 짜임","'민속촌'의 '촌'처럼 장소를 나타내는 말이 붙은 단어를 더 찾아보자. 이때 '촌'은 접사일까, 어근일까?"],
+    ["파주","단어의 짜임","'땅굴'과 '전망대'는 각각 어떤 요소들이 결합한 말인가? 고유어와 한자어가 섞인 말이 있는지도 살펴보자."]]},
+
+ { id:"gangwon", name:"강원", label:[128.3,37.72],
+   desc:"산과 동해를 끼고 있으며, 2018년 동계올림픽이 열린 지역입니다.",
+   cities:[
+    { name:"강릉", lon:128.876, lat:37.752,
+      photo:null, // 여기에 오죽헌 사진 추가 가능
+      sights:["오죽헌","경포대","선교장","정동진","안목해변 커피거리"],
+      food:["초당순두부","감자옹심이"],
+      people:["신사임당·율곡 이이(오죽헌에서 출생)","허균·허난설헌(강릉 초당동 출신)"],
+      events:["2005년 강릉단오제 유네스코 인류무형문화유산 등재","2018년 동계올림픽 빙상 경기 개최"] },
+    { name:"속초", lon:128.592, lat:38.207,
+      photo:null,
+      sights:["설악산 국립공원","영금정","아바이마을(갯배)","속초관광수산시장"],
+      food:["아바이순대","오징어순대","닭강정"],
+      people:["(대표 인물보다는 함경도 실향민 공동체로 알려짐)"],
+      events:["광복 후 38선 이북(북한 지역)이었다가 6·25전쟁 뒤 수복","전쟁 때 내려온 함경도 실향민이 아바이마을을 이룸"] },
+    { name:"평창", lon:128.390, lat:37.371,
+      photo:null,
+      sights:["오대산 월정사·상원사","대관령 양떼목장","봉평 이효석문학관","알펜시아"],
+      food:["봉평 메밀국수","메밀전병"],
+      people:["이효석(봉평 출생, 《메밀꽃 필 무렵》)"],
+      events:["725년 상원사 동종 제작(현존 가장 오래된 한국 동종)","2018년 평창 동계올림픽·패럴림픽"] },
+    { name:"춘천", lon:127.730, lat:37.881,
+      photo:null,
+      sights:["남이섬","소양강댐","김유정문학촌","소양강 스카이워크"],
+      food:["춘천닭갈비","막국수"],
+      people:["김유정(실레마을 출생, 《봄·봄》 《동백꽃》)"],
+      events:["1950년 6·25전쟁 초기 춘천 전투(국군이 북한군의 진격을 늦춤)"] }],
+   questions:[
+    ["강릉","음운 변동","'오죽헌'을 소리 내어 읽어 보자. 표기와 발음은 어떻게 다른가? 같은 변화가 일어나는 단어를 다른 지역에서도 찾아보자."],
+    ["강릉","음운 변동·단어의 짜임","정동진의 '해돋이'는 어떻게 발음되는가? 이 단어가 어떤 요소들로 이루어졌는지도 분석해 보자."],
+    ["강릉","단어의 짜임","'초당순두부'의 '초당'은 지명이다. 지명과 음식 이름이 결합해 만들어진 말을 지도에서 더 찾아보자."],
+    ["속초","음운 변동","'닭강정'의 발음을 적어 보자. 표기와 발음이 달라지는 부분은 몇 군데인가?"],
+    ["속초","음운 변동","'갯배'에는 왜 'ㅅ'이 들어갔을까? '개'와 '배'가 결합할 때 소리가 어떻게 달라지는지 생각해 보자."],
+    ["평창","음운 변동","'대관령'과 '한라산'(제주)의 발음을 비교해 보자. 두 단어에서 공통으로 일어나는 변화는 무엇이며, '융릉'(화성)의 경우와는 어떻게 다른가?"],
+    ["평창","음운 변동","《메밀꽃 필 무렵》의 '메밀꽃'을 단독으로 읽을 때와 '메밀꽃이'로 읽을 때 발음은 어떻게 다른가? 그 까닭은 무엇일까?"],
+    ["춘천","음운 변동","'닭갈비'와 '막국수'의 발음을 적어 보자. 두 단어에서 일어나는 변화를 비교해 보자."],
+    ["춘천","품사","김유정의 소설 제목 《봄·봄》의 '봄'과 '그를 봄'의 '봄'은 같은 성격의 말일까? 품사와 관련지어 구별해 보자."]]},
+
+ { id:"chungcheong", name:"충청", label:[127.25,36.62],
+   desc:"백제의 옛 수도와 독립운동 유적이 많고, 과학·행정 도시가 자리 잡은 지역입니다.",
+   cities:[
+    { name:"대전", lon:127.385, lat:36.351,
+      photo:null,
+      sights:["국립중앙과학관","엑스포과학공원 한빛탑","유성온천","계족산 황톳길","우암사적공원"],
+      food:["칼국수","성심당 빵(튀김소보로 등)"],
+      people:["송시열(대전 회덕에서 활동, 우암사적공원)"],
+      events:["1905년 경부선 대전역 개통으로 도시 성장","1932년 충남도청 공주→대전 이전","1950년 대전 전투","1993년 대전엑스포"] },
+    { name:"세종", lon:127.289, lat:36.480,
+      photo:null,
+      sights:["세종호수공원","국립세종수목원","국립세종도서관","정부세종청사 옥상정원"],
+      food:["조치원 복숭아"],
+      people:["세종대왕(도시 이름의 유래)"],
+      events:["2004년 신행정수도법 위헌 결정 후 행정중심복합도시로 추진","2012년 세종특별자치시 출범"] },
+    { name:"청주", lon:127.489, lat:36.642,
+      photo:null,
+      sights:["청주고인쇄박물관(흥덕사지)","청남대(옛 대통령 별장)","상당산성","수암골 벽화마을"],
+      food:["서문시장 삼겹살거리"],
+      people:["손병희(청주 출생, 3·1운동 민족대표)","신채호(사당·묘소가 청주 낭성에 있음)"],
+      events:["1377년 흥덕사에서 《직지심체요절》 인쇄(현존 최고 금속활자본, 2001년 유네스코 세계기록유산, 원본은 프랑스 국립도서관 소장)","2003년 청남대 일반 개방"] },
+    { name:"천안·아산", lon:127.065, lat:36.800,
+      photo:null, // 여기에 독립기념관 사진 추가 가능
+      sights:["독립기념관","유관순 열사 사적지(병천)","현충사(아산)","외암민속마을","온양온천"],
+      food:["천안 호두과자","병천순대"],
+      people:["유관순(천안 병천 출생)","이순신(아산에서 성장, 현충사·묘소)"],
+      events:["1919년 4월 1일 아우내 장터 만세운동","1987년 독립기념관 개관"] },
+    { name:"공주", lon:127.119, lat:36.446,
+      photo:null, // 여기에 공산성 사진 추가 가능
+      sights:["공산성","무령왕릉과 왕릉원","국립공주박물관","마곡사(유네스코 세계유산 산사)"],
+      food:["공주 알밤"],
+      people:["무령왕(백제 25대 왕)"],
+      events:["475년 백제 웅진 천도","1894년 우금치 전투(동학농민군 패배)","1971년 무령왕릉 발굴","2015년 백제역사유적지구 유네스코 세계유산 등재"] },
+    { name:"단양", group:"단양·보령", lon:128.365, lat:36.985,
+      photo:null, // 여기에 도담삼봉 사진 추가 가능
+      sights:["도담삼봉","고수동굴","만천하스카이워크"],
+      food:["마늘 요리","쏘가리매운탕"],
+      people:["퇴계 이황(1548년 단양군수)","정도전(호 '삼봉'이 도담삼봉에서 왔다는 이야기가 전해짐)"],
+      events:["단양 신라 적성비(국보, 신라의 한강 유역 진출을 보여 줌)"] },
+    { name:"보령", group:"단양·보령", lon:126.613, lat:36.333,
+      photo:null,
+      sights:["대천해수욕장","무창포 신비의 바닷길","보령해저터널"],
+      food:["무창포 주꾸미"],
+      people:["토정 이지함(보령 출생)"],
+      events:["1998년 보령머드축제 시작","2021년 보령해저터널 개통"] }],
+   questions:[
+    ["대전","음운 변동","'계족산 황톳길'은 왜 '황토길'이 아니라 '황톳길'로 적을까? 발음과 관련지어 생각해 보자."],
+    ["대전","음운 변동","'한빛탑'의 '빛'은 어떻게 발음되는가? 받침 'ㅊ'이 단어 안에서 어떻게 소리 나는지 설명해 보자."],
+    ["대전","음운 변동","'칼국수'를 소리 내어 읽어 보자. 표기와 다르게 소리 나는 부분은 어디인가?"],
+    ["세종","단어의 짜임","'호수공원', '수목원', '도서관'은 각각 어떤 요소로 이루어졌는가? 한자어의 짜임을 분석해 보자."],
+    ["청주","음운 변동","《직지심체요절》의 '직지'는 어떻게 발음되는가? 받침 'ㄱ' 뒤에서 어떤 변화가 일어나는지 설명해 보자."],
+    ["청주","음운 변동","'삼겹살'과 '고인쇄박물관'에서 앞 음절 받침 뒤에 일어나는 변화는 서로 어떻게 다른가? 뒤에 오는 소리의 성질과 관련지어 보자."],
+    ["천안·아산","음운 변동","'독립기념관'의 발음을 적어 보자. 이 단어 안에서 일어나는 변화를 모두 찾아 순서대로 설명해 보자."],
+    ["천안·아산","단어의 짜임","'호두과자'와 '병천순대'는 각각 어떤 말과 어떤 말이 결합했는가? 앞말이 뒷말에 어떤 의미를 더해 주는지 비교해 보자."],
+    ["공주","음운 변동","'무령왕릉'의 마지막 두 음절은 어떻게 발음되는가? '신라'(경주)의 발음과 비교해 보자."],
+    ["공주","음운 변동","'백제'를 소리 내어 읽어 보자. 표기와 발음은 어떻게 다른가?"],
+    ["공주","단어의 짜임","'알밤'의 '알'과 '알몸', '알부자'의 '알'은 같은 성격의 말일까? 사전을 찾아 비교해 보자."],
+    ["단양·보령","음운 변동","'신비의 바닷길'에서 '바닷길'에는 왜 'ㅅ'이 들어갔을까? 발음과 관련지어 설명해 보자."],
+    ["단양·보령","단어의 짜임·품사","'쏘가리매운탕'의 '매운'은 어떤 단어가 어떻게 바뀐 형태인가? '매운탕'이 한 단어가 된 방식도 생각해 보자."]]},
+
+ { id:"honam", name:"호남", label:[126.95,35.42],
+   desc:"음식 문화가 풍부하고, 동학농민운동과 민주화운동의 역사가 깊은 지역입니다. 광주는 2026년 7월부터 전남광주통합특별시에 속합니다.",
+   cities:[
+    { name:"전주", lon:127.148, lat:35.824,
+      photo:null, // 여기에 전주한옥마을 사진 추가 가능
+      sights:["전주한옥마을","경기전(태조 어진 봉안)","전동성당","오목대","덕진공원"],
+      food:["전주비빔밥","콩나물국밥"],
+      people:["견훤(후백제를 세우고 완산주를 도읍으로 삼음)","태조 이성계(전주 이씨의 본향)"],
+      events:["900년 후백제 건국","1894년 동학농민군 전주성 점령과 전주화약"] },
+    { name:"광주", lon:126.853, lat:35.160,
+      photo:null,
+      sights:["국립5·18민주묘지","국립아시아문화전당(옛 전남도청)","무등산 국립공원","양림동 근대역사문화마을","충장로"],
+      food:["송정 떡갈비","오리탕"],
+      people:["김덕령(임진왜란 의병장, 시호 '충장'이 충장로 이름의 유래)"],
+      events:["1929년 광주학생항일운동","1980년 5·18민주화운동(기록물은 2011년 유네스코 세계기록유산)","2026년 전남광주통합특별시 출범"] },
+    { name:"여수", lon:127.662, lat:34.760,
+      photo:null,
+      sights:["오동도","향일암","진남관(국보)","여수해상케이블카","돌산대교","여수세계박람회장"],
+      food:["돌산 갓김치","돌게장","서대회"],
+      people:["이순신(전라좌수사, 본영이 여수에 있었음)"],
+      events:["임진왜란 때 전라좌수영에서 거북선 건조","2012년 여수세계박람회"] },
+    { name:"순천", lon:127.487, lat:34.950,
+      photo:null, // 여기에 순천만습지 사진 추가 가능
+      sights:["순천만습지","순천만국가정원","낙안읍성","송광사","선암사(유네스코 세계유산 산사)"],
+      food:["짱뚱어탕","갯벌 해산물"],
+      people:["보조국사 지눌(고려 승려, 송광사에서 정혜결사)"],
+      events:["1598년 순천왜성 전투(정유재란)","2013년 순천만국제정원박람회","2021년 보성-순천갯벌 유네스코 세계자연유산 등재('한국의 갯벌')"] },
+    { name:"목포", lon:126.392, lat:34.812,
+      photo:null,
+      sights:["유달산","목포근대역사관","갓바위","목포해상케이블카","김대중노벨평화상기념관"],
+      food:["세발낙지","홍어삼합","민어"],
+      people:["김대중(신안 하의도 출생, 목포에서 성장, 2000년 노벨평화상)","이난영(가수, '목포의 눈물')"],
+      events:["1897년 목포 개항","일제강점기 호남의 쌀·면화를 일본으로 실어 나르는 항구로 성장"] }],
+   questions:[
+    ["전주","단어의 짜임·품사","'비빔밥'을 분석해 보자. '비빔'은 어떤 말에서 왔으며, 품사는 무엇일까?"],
+    ["전주","음운 변동","'비빔밥'과 '콩나물국밥'의 '밥'은 어떻게 발음되는가? 두 단어에서 소리가 바뀌는 까닭은 같을까?"],
+    ["광주","음운 변동","'충장로'는 어떻게 발음되는가? '종로'(서울)의 발음과 비교해 보자."],
+    ["광주","음운 변동","'떡갈비'를 소리 내어 읽어 보자. 표기와 다르게 소리 나는 부분은 어디이며, 왜 그럴까?"],
+    ["여수","음운 변동","'갓김치'의 발음을 적어 보자. 받침 'ㅅ'은 어떻게 소리 나며, 뒤 음절에는 어떤 변화가 생기는가?"],
+    ["여수","음운 변동","'거북선'을 소리 내어 읽어 보자. 표기와 발음은 어떻게 다른가?"],
+    ["순천","음운 변동","'갯벌'의 표기와 발음을 비교해 보자. 'ㅅ'은 어떤 역할을 할까?"],
+    ["순천","음운 변동","'낙안읍성'을 소리 내어 읽어 보자. 표기와 다른 소리가 나는 부분을 모두 찾아보자."],
+    ["목포","음운 변동","'세발낙지'의 발음을 적어 보자. '발'과 '낙'이 만날 때 어떤 변화가 일어나는가?"],
+    ["목포","단어의 짜임","'세발낙지'의 '세'는 숫자 '셋'을 뜻할까? 사전을 찾아 확인하고 단어의 짜임을 분석해 보자."],
+    ["목포","음운 변동","'갓바위'를 소리 내어 읽어 보자. 표기와 다르게 소리 나는 부분은 어디인가?"]]},
+
+ { id:"yeongnam", name:"영남", label:[128.75,36.25],
+   desc:"신라 천년의 유산과 유교 문화, 한국 산업화의 중심지가 모두 있는 지역입니다.",
+   cities:[
+    { name:"부산", lon:129.075, lat:35.180,
+      photo:null, // 여기에 감천문화마을 사진 추가 가능
+      sights:["해운대","광안리·광안대교","감천문화마을","자갈치시장","태종대","범어사","유엔기념공원(유엔군 전사자 묘지)"],
+      food:["돼지국밥","밀면","어묵"],
+      people:["송상현(동래부사)·정발(부산진첨사), 임진왜란 때 전사"],
+      events:["1592년 임진왜란 첫 전투(부산진성·동래성)","1876년 개항","6·25전쟁 때 임시수도(피란수도)","1979년 부마민주항쟁"] },
+    { name:"울산", lon:129.311, lat:35.539,
+      photo:null,
+      sights:["반구대 암각화·천전리 각석(2025년 '반구천의 암각화'로 유네스코 세계유산 등재)","태화강 국가정원","간절곶","대왕암공원"],
+      food:["언양불고기"],
+      people:["최현배(울산 출생 한글학자, 외솔기념관)","박제상(신라 충신, 치술령 망부석 전설)"],
+      events:["1962년 울산 특정공업지구 지정(한국 산업화의 출발점)","1997년 광역시 승격"] },
+    { name:"포항", lon:129.343, lat:36.019,
+      photo:null,
+      sights:["호미곶(상생의 손)","영일대해수욕장","구룡포 일본인가옥거리","내연산"],
+      food:["구룡포 과메기","물회"],
+      people:["연오랑과 세오녀(《삼국유사》에 전하는 영일 지역 설화)"],
+      events:["1968년 포항종합제철 설립(1973년 첫 쇳물)","2017년 포항 지진(수능 1주일 연기)"] },
+    { name:"경주", lon:129.225, lat:35.856,
+      photo:null, // 여기에 불국사 사진 추가 가능
+      sights:["불국사·석굴암","첨성대","대릉원(천마총)","동궁과 월지","국립경주박물관","양동마을"],
+      food:["황남빵(경주빵)","찰보리빵"],
+      people:["선덕여왕","김유신(삼국통일 주도)","김대성(불국사·석굴암 창건)"],
+      events:["676년 신라 삼국통일 완성","751년 불국사·석굴암 창건 시작","2016년 경주 지진(규모 5.8)","2025년 APEC 정상회의 개최"] },
+    { name:"안동", lon:128.729, lat:36.568,
+      photo:null, // 여기에 하회마을 사진 추가 가능
+      sights:["하회마을(유네스코 세계유산)","도산서원·병산서원","봉정사","월영교"],
+      food:["안동찜닭","간고등어","헛제삿밥"],
+      people:["퇴계 이황","류성룡(《징비록》)","이육사(안동 출생 독립운동가·시인)"],
+      events:["1999년 엘리자베스 2세 영국 여왕 하회마을 방문","2022년 하회별신굿탈놀이 등 '한국의 탈춤' 유네스코 인류무형문화유산 등재"] },
+    { name:"구미", lon:128.344, lat:36.120,
+      photo:null,
+      sights:["금오산(채미정)","구미에코랜드","구미국가산업단지"],
+      food:["(대표 음식보다는 구미라면축제가 알려짐)"],
+      people:["야은 길재(고려 말 충신, 선산 출신)","박정희(구미 상모동 출생)"],
+      events:["1970년대 구미국가산업단지 조성, 한국 전자산업의 중심지로 성장"] },
+    { name:"대구", lon:128.601, lat:35.871,
+      photo:null,
+      sights:["팔공산(2023년 국립공원 지정)·동화사","근대골목(청라언덕·계산성당)","서문시장","김광석다시그리기길"],
+      food:["막창","납작만두","따로국밥"],
+      people:["서상돈(국채보상운동 제안)","이상화(시인, 《빼앗긴 들에도 봄은 오는가》)","김광석(대구 출생 가수)"],
+      events:["1907년 국채보상운동(기록물은 2017년 유네스코 세계기록유산)","1960년 학생들이 주도한 2·28 민주운동"] }],
+   questions:[
+    ["부산","단어의 짜임","'밀면'은 '밀'과 '면'이 결합한 말이다. '냉면', '짜장면'과 비교해 앞말의 성격(고유어·한자어 등)을 분석해 보자."],
+    ["부산","음운 변동","'돼지국밥'을 소리 내어 읽어 보자. 표기와 다르게 소리 나는 부분은 어디인가?"],
+    ["울산","음운 변동","'암각화'의 발음을 적어 보자. 표기와 어떻게 다른가?"],
+    ["울산","음운 변동","'간절곶'과 '호미곶'(포항)의 '곶'은 어떻게 발음되는가? 받침 'ㅈ'이 단어 끝에서 어떻게 소리 나는지 설명해 보자."],
+    ["울산","단어의 짜임·품사","'불고기'는 어떤 요소로 이루어졌는가? '불'의 품사는 무엇일까?"],
+    ["포항","음운 변동","'호미곶'과 '호미곶에'의 발음을 비교해 보자. 조사가 붙으면 받침 소리가 어떻게 달라지는가?"],
+    ["포항","음운 변동·품사","'첫 쇳물'에서 '쇳물'은 어떻게 발음되는가? 'ㅅ'이 들어간 까닭과 함께 설명해 보자. 또 '첫'은 어떤 품사일까?"],
+    ["경주","음운 변동","'신라'와 '석굴암'의 발음을 적어 보자. 각각 어떤 변화가 일어나는가?"],
+    ["경주","단어의 짜임","'찰보리빵'의 '찰'은 어떤 의미를 더하는가? '찰떡', '찰흙'과 비교해 보자."],
+    ["안동","음운 변동","'찜닭'의 발음을 적어 보자. 받침 'ㄺ'은 어떻게 소리 나는가?"],
+    ["안동","단어의 짜임","'헛제삿밥'을 가능한 만큼 나누어 보자. '헛-'은 어떤 의미를 더하며, '제삿밥'에는 왜 'ㅅ'이 들어갔을까?"],
+    ["안동","음운 변동","'탈놀이'를 소리 내어 읽어 보자. 표기와 발음은 어떻게 다른가?"],
+    ["구미","단어의 짜임","'산업단지'를 줄여 '산단'이라고 부르기도 한다. 이렇게 줄인 말이 만들어지는 방식을 '경인선'(인천)과 비교해 보자."],
+    ["대구","음운 변동","'납작만두'의 발음을 적어 보자. 이 단어 안에서 일어나는 변화를 모두 찾아보자."],
+    ["대구","단어의 짜임·품사","'따로국밥'의 '따로'는 어떤 품사인가? 이 단어가 결합한 방식은 우리말 문장에서 단어를 배열하는 방식과 같을까?"]]},
+
+ { id:"jeju", name:"제주", label:[127.28,33.42],
+   desc:"화산섬의 자연과 독특한 문화를 갖춘 한국의 대표 관광지입니다.",
+   cities:[
+    { name:"제주", lon:126.55, lat:33.40,
+      photo:null, // 여기에 성산일출봉 사진 추가 가능
+      sights:["한라산","성산일출봉","만장굴(거문오름 용암동굴계)","우도","천지연폭포","중문 주상절리","제주올레길"],
+      food:["흑돼지","고기국수","갈치조림","몸국","오메기떡","감귤"],
+      people:["김만덕(조선 정조 때 재산을 내어 굶주린 백성 구제)","추사 김정희(제주 유배 중 《세한도》 제작)"],
+      events:["1653년 하멜 표류(《하멜 표류기》로 조선이 유럽에 알려짐)","2007년 '제주 화산섬과 용암동굴' 유네스코 세계자연유산 등재"] }],
+   questions:[
+    ["","음운 변동","'한라산'의 발음은 어떠한가? '대관령'(평창)과 비교해 보자."],
+    ["","음운 변동","'흑돼지'를 소리 내어 읽어 보자. 표기와 다르게 소리 나는 부분은 어디인가?"],
+    ["","단어의 짜임·품사","'갈치조림'의 '조림'은 어떤 말에서 만들어졌을까? 품사도 생각해 보자."]]}
+];
+
+const TABS = ["음운 변동","단어의 짜임","품사"];
+const CATS = [
+  {key:"sights", label:"명소", full:"관광 명소", icon:"i-sight", cls:"ic-sight"},
+  {key:"food",   label:"음식", full:"대표 음식", icon:"i-food",  cls:"ic-food"},
+  {key:"people", label:"인물", full:"유명 인물", icon:"i-person",cls:"ic-person"},
+  {key:"events", label:"사건", full:"역사적 사건", icon:"i-event", cls:"ic-event"}];
+// 겹쳐 그리는 순서 (서울·인천을 맨 위에)
+const ORDER = ["jeju","honam","yeongnam","chungcheong","gangwon","gyeonggi","incheon","seoul"];
+
+/* ---------- 준비 ---------- */
+const NS = "http://www.w3.org/2000/svg";
+const $ = s => document.querySelector(s);
+const stage = $("#stage"), map = $("#map"), overlay = $("#overlay"), cardsBox = $("#cards"),
+      cardList = $("#cardList"), panel = $("#panel"), tip = $("#tip"), backBtn = $("#back"),
+      crumb = $("#crumb"), dlg = $("#dlg");
+const RG = {}; REGIONS.forEach(r => RG[r.id] = r);
+const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const memo = {};                 // 메모 (저장하지 않고 화면을 연 동안만 유지)
+const state = {vb:null, sel:null, lifted:null, tab:TABS[0], raf:0, ptype:"mouse", hl:[]};
+
+const proj = (lon, lat) => [(lon - GEO.proj.lon0) * GEO.proj.kx, (GEO.proj.lat0 - lat) * GEO.proj.ky];
+const el = (tag, attrs = {}, parent) => { const e = document.createElementNS(NS, tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]); if (parent) parent.appendChild(e); return e; };
+const esc = s => s.replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const short = s => { const t = s.replace(/\s*\([^)]*\)/g, "").trim(); return t || s.replace(/[()]/g, ""); };
+const icon = (id, cls = "") => `<svg class="${cls}" aria-hidden="true"><use href="#${id}"/></svg>`;
+
+REGIONS.forEach(r => {
+  r.cities.forEach((c, i) => { c.region = r.id; c.idx = i; [c.x, c.y] = proj(c.lon, c.lat); });
+  r.qs = r.questions.map((q, i) => {
+    const tabs = q[1].split("·");
+    let names = q[0] ? r.cities.filter(c => c.name === q[0] || c.group === q[0]).map(c => c.name) : [r.cities[0].name];
+    return {id: r.id + "-" + i, label: q[0] || r.name, tabs, kind: q[1], text: q[2], cities: names};
+  });
+});
+
+/* ---------- 지도 그리기 ---------- */
+const defs = el("defs", {}, map);
+const f = el("filter", {id:"lift-shadow", x:"-20%", y:"-20%", width:"140%", height:"160%"}, defs);
+el("feDropShadow", {dx:0, dy:3, stdDeviation:3, "flood-color":"#1d3a4a", "flood-opacity":.35}, f);
+const regionsLayer = el("g", {id:"regions"}, map);
+const labelsLayer = el("g", {id:"labels"}, map);
+const gEl = {};
+
+ORDER.forEach(id => {
+  const r = RG[id], geo = GEO.regions[id];
+  const g = el("g", {class:"region", "data-id":id, tabindex:0, role:"button",
+    "aria-label": `${r.name} 지역권: ${r.cities.map(c => c.name).join(", ")}`}, regionsLayer);
+  const base = el("g", {class:"base"}, g), top = el("g", {class:"top"}, g);
+  geo.paths.forEach(p => { el("path", {d:p.d, "fill-rule":"evenodd"}, base);
+    const t = el("path", {d:p.d, "fill-rule":"evenodd"}, top); el("title", {}, t).textContent = `${r.name} · ${p.name}`; });
+  if (id === "yeongnam") {      // 독도
+    const [dx, dy] = GEO.dokdo;
+    el("circle", {cx:dx, cy:dy, r:1.6}, base).style.fill = "var(--map-side)";
+    el("circle", {class:"dokdo", cx:dx - 0.8, cy:dy, r:1.6}, top);
+    el("circle", {class:"dokdo", cx:dx + 1.3, cy:dy + 0.2, r:1.3}, top);
+  }
+  if (id === "seoul" || id === "incheon") {   // 작은 지역은 인식 범위를 넓게
+    const [hx, hy] = id === "seoul" ? proj(126.99, 37.56) : proj(126.62, 37.47);
+    el("circle", {class:"hit", cx:hx, cy:hy, r: id === "seoul" ? 17 : 15}, top);
+  }
+  gEl[id] = g;
+  const [lx, ly] = proj(...r.label);
+  const t = el("text", {class:"rlabel", x:lx, y:ly, "font-size": (id === "seoul" || id === "incheon") ? 13 : 17}, labelsLayer);
+  t.textContent = r.name;
+});
+[["울릉도", 130.86, 37.40], ["독도", 131.87, 37.17]].forEach(([n, lon, lat]) => {
+  const [x, y] = proj(lon, lat);
+  const t = el("text", {class:"small", x, y, "font-size":10}, labelsLayer); t.textContent = n;
+});
+const reorder = () => ORDER.forEach(id => regionsLayer.appendChild(gEl[id]));
+
+/* ---------- 화면 좌표 ---------- */
+const size = () => [stage.clientWidth, stage.clientHeight];
+const isWide = () => stage.clientWidth >= 720;
+function toScreen(x, y) { const [vx, vy, vw, vh] = state.vb, [W, H] = size(); return [(x - vx) / vw * W, (y - vy) / vh * H]; }
+function fitBox(box, left, right, top, bottom) {
+  const [W, H] = size(); let [x0, y0, x1, y1] = box;
+  const minS = 70; if (x1 - x0 < minS) { const c = (x0 + x1) / 2; x0 = c - minS / 2; x1 = c + minS / 2; }
+  if (y1 - y0 < minS) { const c = (y0 + y1) / 2; y0 = c - minS / 2; y1 = c + minS / 2; }
+  const aw = Math.max(80, W - left - right), ah = Math.max(80, H - top - bottom);
+  const s = Math.min(aw / (x1 - x0), ah / (y1 - y0));
+  const sx = left + aw / 2, sy = top + ah / 2, cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+  return [cx - sx / s, cy - sy / s, W / s, H / s];
+}
+const overviewVB = () => fitBox(GEO.extent, 20, 20, 70, 64);
+function regionVB(id) {
+  const side = isWide() ? cardWidth() + 40 : 14;
+  return fitBox(GEO.regions[id].bbox, side, side, 70, 24);
+}
+const cardWidth = () => Math.round(Math.min(300, Math.max(230, stage.clientWidth * 0.22)));
+function applyVB() { map.setAttribute("viewBox", state.vb.join(" ")); drawOverlay(); }
+function animateVB(to, done) {
+  cancelAnimationFrame(state.raf);
+  if (reduceMotion || !state.vb) { state.vb = to; applyVB(); done && done(); return; }
+  const from = state.vb.slice(), t0 = performance.now(), dur = 650;
+  const step = t => { let k = Math.min(1, (t - t0) / dur); k = k < .5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2;
+    state.vb = from.map((v, i) => v + (to[i] - v) * k); applyVB();
+    if (k < 1) state.raf = requestAnimationFrame(step); else done && done(); };
+  state.raf = requestAnimationFrame(step);
+}
+
+/* ---------- 솟아오르기 ---------- */
+function lift(id) {
+  if (state.lifted === id) return; unlift(true);
+  state.lifted = id; const g = gEl[id];
+  const d = 9 * state.vb[2] / stage.clientWidth;          // 화면에서 약 9px
+  g.querySelector(".top").style.transform = `translate(0px, ${-d}px)`;
+  g.classList.add("lift"); regionsLayer.appendChild(g);
+}
+function unlift(keepTip) {
+  const id = state.lifted; if (!id) return; state.lifted = null;
+  const g = gEl[id]; g.classList.remove("lift"); g.querySelector(".top").style.transform = "";
+  setTimeout(() => { if (state.lifted !== id) reorder(); }, 300);
+  if (!keepTip) hideTip();
+}
+function showTip(id, ev) {
+  const r = RG[id], touch = state.ptype !== "mouse";
+  tip.innerHTML = `<b>${r.name}</b>${r.cities.map(c => c.name).join(" · ")}<small>${state.sel ? "눌러서 이 지역권으로 이동" : touch ? "한 번 더 누르면 확대돼요" : "눌러서 확대해 보세요"}</small>`;
+  tip.classList.add("on"); moveTip(ev, id);
+}
+function moveTip(ev, id) {
+  const rect = stage.getBoundingClientRect(); let x, y;
+  if (ev && ev.clientX != null && state.ptype === "mouse") { x = ev.clientX - rect.left + 16; y = ev.clientY - rect.top + 16; }
+  else { const b = GEO.regions[id].bbox; [x, y] = toScreen((b[0] + b[2]) / 2, b[1]); y = Math.max(60, y - 70); x -= 60; }
+  const w = tip.offsetWidth, h = tip.offsetHeight;
+  tip.style.left = Math.min(Math.max(8, x), rect.width - w - 8) + "px";
+  tip.style.top = Math.min(Math.max(8, y), rect.height - h - 8) + "px";
+}
+const hideTip = () => tip.classList.remove("on");
+
+map.addEventListener("pointerdown", e => { state.ptype = e.pointerType || "mouse"; state.kbd = false; });
+Object.entries(gEl).forEach(([id, g]) => {
+  g.addEventListener("pointerenter", e => { if (e.pointerType !== "mouse") return; state.ptype = "mouse";
+    if (!state.sel) lift(id); if (state.sel !== id) showTip(id, e); });
+  g.addEventListener("pointermove", e => { if (e.pointerType === "mouse" && tip.classList.contains("on")) moveTip(e, id); });
+  g.addEventListener("pointerleave", e => { if (e.pointerType !== "mouse") return; if (!state.sel) unlift(); else hideTip(); });
+  g.addEventListener("click", () => {
+    if (state.sel === id) return;
+    if (state.sel) { select(id); return; }
+    if (state.ptype !== "mouse" && state.lifted !== id) { lift(id); showTip(id); return; }   // 터치: 첫 탭은 솟아오르기
+    select(id);
+  });
+  g.addEventListener("focus", () => { if (!state.sel && g.matches(":focus-visible")) { state.kbd = true; lift(id); showTip(id); } });
+  g.addEventListener("blur", () => { if (state.kbd && !state.sel) { state.kbd = false; unlift(); } });
+  g.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); if (state.sel !== id) select(id); } });
+});
+map.addEventListener("click", e => { if (!e.target.closest(".region") && !state.sel) unlift(); });
+
+/* ---------- 지역권 선택 / 돌아가기 ---------- */
+function select(id) {
+  unlift(); hideTip(); state.sel = id; state.hl = [];
+  map.classList.add("zoomed"); stage.classList.add("is-zoomed");
+  Object.entries(gEl).forEach(([k, g]) => g.classList.toggle("active", k === id));
+  backBtn.disabled = false; crumb.textContent = `${RG[id].name} 지역권`;
+  clearCards(); state.tab = TABS.find(t => RG[id].qs.some(q => q.tabs.includes(t))) || TABS[0];
+  renderPanel();
+  animateVB(regionVB(id), renderCards);
+}
+function goHome() {
+  state.sel = null; state.hl = []; clearCards();
+  map.classList.remove("zoomed"); stage.classList.remove("is-zoomed");
+  Object.values(gEl).forEach(g => g.classList.remove("active"));
+  backBtn.disabled = true; renderPanel(); animateVB(overviewVB());
+}
+backBtn.addEventListener("click", goHome);
+document.addEventListener("keydown", e => { if (e.key === "Escape" && state.sel && !dlg.open) goHome(); });
+
+/* ---------- 마커와 지시선 ---------- */
+let cardPos = [];   // 지시선을 그릴 카드 위치
+function drawOverlay() {
+  overlay.innerHTML = "";
+  if (!state.sel) return;
+  const r = RG[state.sel], showNames = !isWide();
+  const lines = el("g", {}, overlay), marks = el("g", {}, overlay);
+  r.cities.forEach((c, i) => {
+    const [x, y] = toScreen(c.x, c.y);
+    const cp = cardPos[i];
+    if (cp) {
+      const ax = cp.side === "left" ? cp.x + cp.w : cp.x;
+      const ay = Math.min(Math.max(y, cp.y + 18), cp.y + cp.h - 18);
+      el("path", {class:"leader", d:`M${x},${y}L${ax},${ay}`}, lines);
+      el("circle", {class:"leader-dot", cx:ax, cy:ay, r:3.5}, lines);
+    }
+    const g = el("g", {class:"marker" + (state.hl.includes(c.name) ? " hl" : ""), "data-city":c.name, tabindex:0,
+      role:"button", "aria-label":`${c.name} 자세히 보기`}, marks);
+    el("circle", {class:"pulse", cx:x, cy:y, r:12}, g);
+    el("circle", {class:"m", cx:x, cy:y, r:12}, g);
+    const n = el("text", {class:"n", x, y}, g); n.textContent = i + 1;
+    if (showNames) { const t = el("text", {class:"mname", x:x + 16, y}, g); t.textContent = c.name; }
+    g.addEventListener("click", () => openCity(c));
+    g.addEventListener("keydown", e => { if (e.key === "Enter") openCity(c); });
+  });
+}
+
+/* ---------- 정보 카드 ---------- */
+function cardHTML(c, n) {
+  const rows = CATS.map((k, j) => {
+    const list = c[k.key], shown = list.slice(0, 2).map(short).join(" · ");
+    const more = list.length > 2 ? ` 외 ${list.length - 2}` : "";
+    return `<li class="${j > 1 ? "extra" : ""}">${icon(k.icon, k.cls)}<b>${k.label}</b><span>${esc(shown)}${more}</span></li>`;
+  }).join("");
+  return `<h3><span class="num">${n}</span>${esc(c.name)}<span class="more">자세히 ›</span></h3><ul>${rows}</ul>`;
+}
+function clearCards() { cardsBox.innerHTML = ""; cardList.innerHTML = ""; cardList.classList.remove("on"); cardPos = []; drawOverlay(); }
+function renderCards() {
+  if (!state.sel) return;
+  const r = RG[state.sel], wide = isWide(); cardsBox.innerHTML = ""; cardList.innerHTML = ""; cardPos = [];
+  const box = wide ? cardsBox : cardList; cardList.classList.toggle("on", !wide);
+  const els = r.cities.map((c, i) => {
+    const a = document.createElement("article");
+    a.className = "card" + (state.hl.includes(c.name) ? " hl" : ""); a.tabIndex = 0; a.dataset.city = c.name;
+    a.setAttribute("role", "button"); a.setAttribute("aria-label", `${c.name} 정보 자세히 보기`);
+    a.innerHTML = cardHTML(c, i + 1); if (wide) a.style.setProperty("--cw", cardWidth() + "px");
+    a.addEventListener("click", () => openCity(c));
+    a.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openCity(c); } });
+    box.appendChild(a); return a;
+  });
+  if (wide) layoutCards(r, els);
+  drawOverlay();
+  requestAnimationFrame(() => els.forEach((a, i) => setTimeout(() => a.classList.add("show"), reduceMotion ? 0 : i * 60)));
+}
+function layoutCards(r, els) {
+  const [W, H] = size(), cw = cardWidth(), top = 70, bottom = H - 14, gap = 10, pad = 16;
+  const idx = r.cities.map((c, i) => i);
+  const scr = r.cities.map(c => toScreen(c.x, c.y));
+  let left = [], right = [];
+  if (idx.length === 1) right = idx;
+  else { const byX = idx.slice().sort((a, b) => scr[a][0] - scr[b][0]); const k = Math.floor(idx.length / 2);
+    left = byX.slice(0, k); right = byX.slice(k); }
+  const place = (col, side) => {
+    col.sort((a, b) => scr[a][1] - scr[b][1]);
+    let hs = col.map(i => els[i].offsetHeight);
+    if (hs.reduce((s, h) => s + h + gap, -gap) > bottom - top) { col.forEach(i => els[i].classList.add("compact")); hs = col.map(i => els[i].offsetHeight); }
+    const ys = []; let cur = top;
+    col.forEach((i, j) => { const ideal = scr[i][1] - hs[j] / 2; ys[j] = Math.max(ideal, cur); cur = ys[j] + hs[j] + gap; });
+    let limit = bottom;
+    for (let j = col.length - 1; j >= 0; j--) { ys[j] = Math.max(top, Math.min(ys[j], limit - hs[j])); limit = ys[j] - gap; }
+    const x = side === "left" ? pad : W - pad - cw;
+    col.forEach((i, j) => { els[i].style.left = x + "px"; els[i].style.top = ys[j] + "px";
+      cardPos[i] = {x, y: ys[j], w: cw, h: hs[j], side}; });
+  };
+  place(left, "left"); place(right, "right");
+}
+
+/* ---------- 탐구 질문 패널 ---------- */
+function renderPanel() {
+  if (!state.sel) {
+    panel.innerHTML = `
+      <h2>탐구 방법</h2>
+      <p class="lead">지도 속 지역을 둘러보며 낱말의 소리와 짜임을 스스로 탐구해 봅시다.</p>
+      <ol class="steps">
+        <li>지도에서 <b>지역권 위에 마우스를 올려</b> 보세요. 지역권이 솟아오릅니다. (태블릿은 한 번 누르기)</li>
+        <li><b>눌러서 확대</b>하면 도시별 명소·음식·인물·역사 카드가 나타납니다.</li>
+        <li>카드를 누르면 도시의 전체 설명을 볼 수 있습니다.</li>
+        <li>오른쪽 <b>문법 탐구 질문</b>을 읽고, 소리 내어 읽거나 사전을 찾아보며 생각을 메모해 보세요.</li>
+      </ol>
+      <p class="notice">이 앱은 정답을 알려 주지 않습니다. 교과서와 국어사전(표준국어대사전 등)을 찾아보며 친구들과 생각을 나누어 보세요.</p>
+      <h2 style="font-size:18px">바로 가기</h2>
+      <div class="chips">${REGIONS.map(r => `<button class="chip-btn" data-go="${r.id}">${r.name}</button>`).join("")}</div>
+      <p class="src">지도 경계: 통계청 2013년 시·도 경계(southkorea-maps 공개 데이터)를 단순화하여 사용했습니다. 독도는 실제 위치에 따로 표시했습니다. 2026년 7월 출범한 전남광주통합특별시는 옛 광주광역시·전라남도 범위로 호남권에 함께 표시됩니다.</p>`;
+    panel.querySelectorAll("[data-go]").forEach(b => b.addEventListener("click", () => select(b.dataset.go)));
+    return;
+  }
+  const r = RG[state.sel];
+  const counts = TABS.map(t => r.qs.filter(q => q.tabs.includes(t)).length);
+  const list = r.qs.filter(q => q.tabs.includes(state.tab));
+  panel.innerHTML = `
+    <h2>${r.name} · 문법 탐구 질문</h2>
+    <p class="lead">${esc(r.desc)}</p>
+    <div class="tabs" role="tablist" aria-label="탐구 영역">
+      ${TABS.map((t, i) => `<button class="tab" role="tab" aria-selected="${t === state.tab}" data-tab="${t}">${t}<span class="cnt">${counts[i]}</span></button>`).join("")}
+    </div>
+    <div role="tabpanel" aria-label="${state.tab} 질문">
+      ${list.length ? list.map(q => `
+        <div class="q${q.cities.some(c => state.hl.includes(c)) && state.hlq === q.id ? " on" : ""}" data-q="${q.id}">
+          <div class="meta"><span class="tag city">${esc(q.label)}</span>${q.tabs.map(t => `<span class="tag kind">${t}</span>`).join("")}</div>
+          <button class="qtext" data-q="${q.id}" title="눌러서 지도에서 위치 보기">${esc(q.text)}</button>
+          <label class="sr" for="m-${q.id}">메모</label>
+          <textarea id="m-${q.id}" data-q="${q.id}" placeholder="내 생각을 적어 보세요 (저장되지 않아요)">${esc(memo[q.id] || "")}</textarea>
+        </div>`).join("")
+      : `<div class="empty">${r.name} 지역권에는 '${state.tab}' 탐구 질문이 없어요.<br>다른 탭이나 다른 지역권을 살펴보세요.</div>`}
+    </div>
+    <p class="notice" style="margin-top:6px">답은 알려 주지 않아요. 소리 내어 읽어 보고, 사전과 교과서에서 근거를 찾아 설명해 보세요.</p>`;
+  panel.querySelectorAll(".tab").forEach(b => b.addEventListener("click", () => { state.tab = b.dataset.tab; renderPanel(); }));
+  panel.querySelectorAll("textarea").forEach(t => t.addEventListener("input", () => memo[t.dataset.q] = t.value));
+  panel.querySelectorAll(".qtext").forEach(b => b.addEventListener("click", () => highlight(r.qs.find(q => q.id === b.dataset.q))));
+}
+function highlight(q) {
+  state.hl = q.cities; state.hlq = q.id;
+  panel.querySelectorAll(".q").forEach(d => d.classList.toggle("on", d.dataset.q === q.id));
+  document.querySelectorAll(".card").forEach(c => c.classList.toggle("hl", q.cities.includes(c.dataset.city)));
+  drawOverlay();
+  if (!isWide()) stage.scrollIntoView({behavior: reduceMotion ? "auto" : "smooth", block: "center"});
+}
+
+/* ---------- 도시 상세 보기 ---------- */
+function openCity(c) {
+  const r = RG[c.region];
+  const qs = r.qs.filter(q => q.cities.includes(c.name));
+  const visual = c.photo && c.photo.src
+    ? `<figure class="photo"><img src="${esc(c.photo.src)}" alt="${esc(c.name)} 사진" onerror="this.closest('figure').outerHTML=document.getElementById('fallback-visual').innerHTML">
+         <figcaption>출처: ${esc(c.photo.source || "")} · 저작자: ${esc(c.photo.author || "")} · ${esc(c.photo.license || "")}</figcaption></figure>`
+    : fallbackVisual();
+  dlg.innerHTML = `
+    <div class="dlg-head"><div><div class="rg">${r.name} 지역권</div><h2 id="dlgTitle">${esc(c.name)}</h2></div>
+      <button aria-label="닫기" id="dlgClose">×</button></div>
+    <div class="dlg-body">
+      ${visual}
+      ${CATS.map(k => `<section class="sec"><h3>${icon(k.icon, k.cls)}${k.full}</h3><ul>${c[k.key].map(s => `<li>${esc(s)}</li>`).join("")}</ul></section>`).join("")}
+      ${qs.length ? `<div class="dlg-q"><h3>이 도시와 관련된 탐구 질문</h3><ol>${qs.map(q => `<li>${esc(q.text)}</li>`).join("")}</ol></div>` : ""}
+    </div>`;
+  $("#dlgClose").addEventListener("click", () => dlg.close());
+  dlg.showModal();
+}
+function fallbackVisual() { return document.getElementById("fallback-visual").innerHTML; }
+dlg.addEventListener("click", e => { if (e.target === dlg) dlg.close(); });
+const fb = document.createElement("template"); fb.id = "fallback-visual";
+fb.innerHTML = `<div class="visual">${CATS.map(k => icon(k.icon, k.cls)).join("")}</div>`;
+document.body.appendChild(fb);
+
+/* ---------- 시작 / 크기 변경 ---------- */
+function relayout() {
+  cancelAnimationFrame(state.raf);
+  state.vb = state.sel ? regionVB(state.sel) : overviewVB(); applyVB();
+  if (state.sel) renderCards();
+}
+let rt; new ResizeObserver(() => { clearTimeout(rt); rt = setTimeout(relayout, 80); }).observe(stage);
+state.vb = overviewVB(); applyVB(); renderPanel();
+</script>
+</body>
+</html>
